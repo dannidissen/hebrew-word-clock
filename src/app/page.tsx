@@ -20,6 +20,10 @@ export default function ClockPage() {
   const [wakeLockActive, setWakeLockActive] = useState<boolean>(false);
   const [wakeLockSupported, setWakeLockSupported] = useState<boolean>(true);
 
+  // Fullscreen states (hides the browser chrome — great on tablets)
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [fullscreenSupported, setFullscreenSupported] = useState<boolean>(false);
+
   // Idle state to auto-hide UI settings controls
   const [isIdle, setIsIdle] = useState<boolean>(false);
   const idleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -27,6 +31,15 @@ export default function ClockPage() {
   // 1. Initialize settings from localStorage on mount
   useEffect(() => {
     setWakeLockSupported("wakeLock" in navigator);
+
+    // Fullscreen is unavailable on e.g. iOS Safari (no non-video fullscreen).
+    const docEl = document.documentElement as HTMLElement & {
+      webkitRequestFullscreen?: () => Promise<void>;
+    };
+    setFullscreenSupported(
+      document.fullscreenEnabled ||
+        typeof docEl.webkitRequestFullscreen === "function"
+    );
 
     // Read stored preferences
     const storedPrecise = localStorage.getItem("preciseMode");
@@ -104,6 +117,43 @@ export default function ClockPage() {
       requestWakeLock();
     }
   };
+
+  // 2b. Fullscreen handling (with a webkit fallback for older WebKit engines)
+  const toggleFullscreen = async () => {
+    const doc = document as Document & {
+      webkitFullscreenElement?: Element;
+      webkitExitFullscreen?: () => Promise<void>;
+    };
+    const docEl = document.documentElement as HTMLElement & {
+      webkitRequestFullscreen?: () => Promise<void>;
+    };
+    try {
+      if (!doc.fullscreenElement && !doc.webkitFullscreenElement) {
+        if (docEl.requestFullscreen) await docEl.requestFullscreen();
+        else if (docEl.webkitRequestFullscreen) await docEl.webkitRequestFullscreen();
+      } else {
+        if (doc.exitFullscreen) await doc.exitFullscreen();
+        else if (doc.webkitExitFullscreen) await doc.webkitExitFullscreen();
+      }
+    } catch (err) {
+      console.error("Failed to toggle fullscreen:", err);
+    }
+  };
+
+  // Keep the button state in sync with the actual fullscreen status (covers the
+  // user leaving fullscreen via the system back gesture or the Esc key).
+  useEffect(() => {
+    const doc = document as Document & { webkitFullscreenElement?: Element };
+    const handleChange = () => {
+      setIsFullscreen(!!(doc.fullscreenElement || doc.webkitFullscreenElement));
+    };
+    document.addEventListener("fullscreenchange", handleChange);
+    document.addEventListener("webkitfullscreenchange", handleChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleChange);
+      document.removeEventListener("webkitfullscreenchange", handleChange);
+    };
+  }, []);
 
   // Re-request wake lock if window regains focus/visibility
   useEffect(() => {
@@ -305,6 +355,21 @@ export default function ClockPage() {
                 }`}
               />
               {wakeLockActive ? "מסך ער" : "מנע שינה"}
+            </button>
+          )}
+
+          {/* Fullscreen toggle */}
+          {fullscreenSupported && (
+            <button
+              onClick={toggleFullscreen}
+              aria-label={isFullscreen ? "צא ממסך מלא" : "מסך מלא"}
+              className={`px-4 py-1.5 rounded-full text-[11px] font-medium tracking-wider transition-all duration-300 border ${
+                isFullscreen
+                  ? getThemeButtonActive()
+                  : "border-transparent text-neutral-500 hover:text-neutral-300"
+              }`}
+            >
+              {isFullscreen ? "צא ממסך מלא" : "מסך מלא"}
             </button>
           )}
 
