@@ -8,10 +8,12 @@ const assistant = Assistant({
   weight: ["300", "400", "500", "600", "700"],
 });
 
+// Note: the <link rel="manifest"> that Next injects from app/manifest.ts is NOT
+// rewritten with basePath (a Next bug), so its href is patched to /wordsWatch/…
+// after export by scripts/postbuild.mjs.
 export const metadata: Metadata = {
   title: "שעון מילים פואטי",
   description: "שעון מילים מינימליסטי בעברית פואטית ומנוקדת",
-  manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
@@ -23,8 +25,7 @@ export const viewport: Viewport = {
   themeColor: "#000000",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
+  // Allow pinch-zoom for accessibility (do not lock scaling).
 };
 
 export default function RootLayout({

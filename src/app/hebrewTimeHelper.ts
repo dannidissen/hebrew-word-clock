@@ -185,11 +185,14 @@ export function getPeriodOfDay(h: number): string {
  * @param hours 0-23 hour format
  * @param minutes 0-59 minute format
  * @param precise true if exact minutes, false if rounded to 5 mins
+ * @param seconds 0-59 seconds, used only in rounded mode so the 5-minute
+ *        rounding reflects the true time (e.g. 10:02:40 rounds to 10:05)
  */
 export function convertTimeToHebrewWords(
   hours: number,
   minutes: number,
-  precise: boolean
+  precise: boolean,
+  seconds: number = 0
 ): string {
   if (precise) {
     // Precise Mode
@@ -223,8 +226,10 @@ export function convertTimeToHebrewWords(
     }
     return `${minPhrase} ${hourPhrase} ${getPeriodOfDay(nextHour)}`;
   } else {
-    // Rounded Mode (nearest 5-minute increments)
-    let roundedMinutes = Math.round(minutes / 5) * 5;
+    // Rounded Mode (nearest 5-minute increments).
+    // Include seconds so the rounding tracks the real time instead of lagging
+    // up to a full minute behind.
+    let roundedMinutes = Math.round((minutes + seconds / 60) / 5) * 5;
     let targetHour = hours;
 
     if (roundedMinutes === 60) {
@@ -232,12 +237,13 @@ export function convertTimeToHebrewWords(
       targetHour = (hours + 1) % 24;
     }
 
-    // exact hour
+    // exact hour — no "exactly" word here: this is the rounded mode, so the
+    // real time may be up to ~2.5 minutes away and "exactly" would mislead.
     if (roundedMinutes === 0) {
       if (targetHour === 0) {
         return "חֲצוֹת";
       }
-      return `${getHourName(targetHour)} בְּדִיּוּק ${getPeriodOfDay(targetHour)}`;
+      return `${getHourName(targetHour)} ${getPeriodOfDay(targetHour)}`;
     }
 
     // Additive (roundedMinutes < 40)

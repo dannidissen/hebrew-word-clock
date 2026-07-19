@@ -24,9 +24,8 @@ export default function ClockPage() {
   const [isIdle, setIsIdle] = useState<boolean>(false);
   const idleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // 1. Initialize time and settings
+  // 1. Initialize settings from localStorage on mount
   useEffect(() => {
-    setTime(new Date());
     setWakeLockSupported("wakeLock" in navigator);
 
     // Read stored preferences
@@ -40,14 +39,37 @@ export default function ClockPage() {
     if (storedTheme !== null && ["amber", "stone", "sunset"].includes(storedTheme)) {
       setColorTheme(storedTheme);
     }
-
-    // Interval ticker to update time exactly every second
-    const interval = setInterval(() => {
-      setTime(new Date());
-    }, 1000);
-
-    return () => clearInterval(interval);
   }, []);
+
+  // 1b. Clock ticker.
+  // Instead of a blind 1s interval (which re-renders 60x/min even though the
+  // words change at most once a minute), we poll each second but only push a
+  // new `time` — triggering a render — when the rendered phrase actually
+  // changes. The timeout re-aligns to the real second boundary each tick so it
+  // never drifts. Re-runs when preciseMode changes so the phrase updates at once.
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+    let lastPhrase = "";
+
+    const tick = () => {
+      const now = new Date();
+      const phrase = convertTimeToHebrewWords(
+        now.getHours(),
+        now.getMinutes(),
+        preciseMode,
+        now.getSeconds()
+      );
+      if (phrase !== lastPhrase) {
+        lastPhrase = phrase;
+        setTime(now);
+      }
+      // Align the next tick to the upcoming second boundary (no drift).
+      timeoutId = setTimeout(tick, 1000 - now.getMilliseconds());
+    };
+
+    tick();
+    return () => clearTimeout(timeoutId);
+  }, [preciseMode]);
 
   // 2. Wake Lock handlers
   const requestWakeLock = async () => {
@@ -150,7 +172,12 @@ export default function ClockPage() {
 
   // 5. Compute correct Hebrew phrasing
   const targetText = time
-    ? convertTimeToHebrewWords(time.getHours(), time.getMinutes(), preciseMode)
+    ? convertTimeToHebrewWords(
+        time.getHours(),
+        time.getMinutes(),
+        preciseMode,
+        time.getSeconds()
+      )
     : "";
   const processedText = niqqudMode ? targetText : stripNiqqud(targetText);
 
@@ -216,11 +243,15 @@ export default function ClockPage() {
       {/* Visual Clock Screen Wrapper to Prevent Shift */}
       <section className="flex items-center justify-center min-h-[45vh] w-full max-w-5xl">
         <h1
-          className={`text-4xl sm:text-6xl md:text-7xl lg:text-[5.5rem] xl:text-[6.5rem] leading-relaxed font-light tracking-wide text-center transition-opacity duration-500 ease-in-out select-none ${getThemeTextClass()} ${
-            isFading ? "opacity-0" : "opacity-100"
-          }`}
+          role="timer"
+          aria-live="polite"
+          aria-atomic="true"
+          aria-label={displayedText ? stripNiqqud(displayedText) : "טוען"}
+          className={`text-4xl sm:text-6xl md:text-7xl lg:text-[5.5rem] xl:text-[6.5rem] leading-relaxed font-light tracking-wide text-center transition-opacity duration-500 ease-in-out select-none ${
+            displayedText ? getThemeTextClass() : "text-neutral-600"
+          } ${isFading ? "opacity-0" : "opacity-100"}`}
           style={{
-            textShadow: getThemeTextShadow(),
+            textShadow: displayedText ? getThemeTextShadow() : "none",
           }}
         >
           {displayedText || "טוען..."}

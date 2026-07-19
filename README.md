@@ -1,36 +1,66 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# שעון מילים פואטי · Poetic Hebrew Word Clock
 
-## Getting Started
+A minimalist, full-screen **word clock** that tells the time in natural, vocalized
+(Niqqud) Hebrew — e.g. _"עֶשֶׂר וָרֶבַע בַּבֹּקֶר"_ instead of `10:15`. Built as an
+installable PWA, designed to be left running on a phone or tablet as an ambient
+bedside / desk clock.
 
-First, run the development server:
+## Features
+
+- **Poetic phrasing** — additive ("ten and a quarter"), subtractive ("ten to
+  eleven"), and part-of-day suffixes (morning / noon / evening / night, plus a
+  "towards morning" flourish for the small hours).
+- **Two granularities** — a rounded *poetic* mode (nearest 5 minutes) and an
+  exact *precise* mode (to the minute, with feminine "דַּקּוֹת" agreement).
+- **Niqqud toggle** — show or hide vowel points.
+- **Three warm themes** — amber / stone / sunset.
+- **Screen Wake Lock** — optional, keeps the display awake for kiosk use, and
+  re-acquires the lock when the tab becomes visible again.
+- **Auto-hiding UI** — controls fade away (and the cursor hides) after 5s idle.
+- **Accessible** — the clock is an `aria-live` timer announced to screen readers
+  in clean, unpointed Hebrew; pinch-zoom is allowed.
+
+## Architecture
+
+| File | Responsibility |
+| --- | --- |
+| [`src/app/hebrewTimeHelper.ts`](src/app/hebrewTimeHelper.ts) | Pure logic: dictionaries of vocalized numbers + `convertTimeToHebrewWords()`. No React, no side effects — this is the part with tests. |
+| [`src/app/page.tsx`](src/app/page.tsx) | The clock UI: ticker, settings (persisted to `localStorage`), wake lock, idle detection, fade transitions. |
+| [`src/app/layout.tsx`](src/app/layout.tsx) | RTL document shell, Assistant Hebrew font, PWA metadata. |
+| [`src/app/manifest.ts`](src/app/manifest.ts) | Web app manifest (icons, standalone display). |
+
+### The ticker
+
+Rather than a blind `setInterval(1000)` that re-renders 60×/minute, the ticker
+polls each second but only pushes a new render when the rendered **phrase**
+actually changes, and re-aligns to the real second boundary so it never drifts.
+
+## Getting started
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev        # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Testing
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+The Hebrew grammar engine is covered by [Vitest](https://vitest.dev):
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm test           # run once
+npm run test:watch # watch mode
+```
 
-## Learn More
+## Build & deploy
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm run build
+npm start
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Deploys cleanly to any Next.js host (e.g. Vercel). The service worker is
+disabled in development and generated on build via `@ducanh2912/next-pwa`.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Tech stack
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Next.js 14 (App Router) · React 18 · TypeScript · Tailwind CSS · next-pwa.
