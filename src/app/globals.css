@@ -32,3 +32,25 @@ html, body {
 .animate-fade-in {
   animation: fadeIn 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
+
+/* Per-word cascade used when the clock phrase changes (see page.tsx) */
+@keyframes wordFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(0.15em);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-word-in {
+  animation: wordFadeIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-word-in {
+    animation: none;
+  }
+}
