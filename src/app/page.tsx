@@ -254,24 +254,32 @@ export default function ClockPage() {
       case "stone":
         return "text-stone-300";
       case "sunset":
-        return "text-orange-200/90";
+        return "text-orange-200";
       case "amber":
       default:
-        return "text-amber-100/90";
+        return "text-amber-100";
     }
   };
 
   const getThemeTextShadow = () => {
     switch (colorTheme) {
       case "stone":
-        return "0 0 10px rgba(214, 211, 209, 0.15)";
+        return "0 0 14px rgba(214, 211, 209, 0.25)";
       case "sunset":
-        return "0 0 10px rgba(254, 215, 170, 0.15)";
+        return "0 0 14px rgba(254, 215, 170, 0.25)";
       case "amber":
       default:
-        return "0 0 10px rgba(254, 243, 199, 0.15)";
+        return "0 0 14px rgba(254, 243, 199, 0.25)";
     }
   };
+
+  // Scale the clock with the screen instead of fixed breakpoints, and let
+  // short phrases (rounded mode) run larger than long precise-mode ones so
+  // both fill the display without overflowing. The vh term caps the size on
+  // wide-landscape tablets; the rem bounds keep phones and desktops sane.
+  const phraseLength = stripNiqqud(displayedText || "טוען...").length;
+  const vwFactor = phraseLength <= 16 ? 15 : phraseLength <= 26 ? 13 : 10.5;
+  const clockFontSize = `clamp(3rem, min(${vwFactor}vw, 20vh), 12rem)`;
 
   const getThemeButtonActive = () => {
     switch (colorTheme) {
@@ -291,16 +299,17 @@ export default function ClockPage() {
       style={{ cursor: isIdle ? "none" : "default" }}
     >
       {/* Visual Clock Screen Wrapper to Prevent Shift */}
-      <section className="flex items-center justify-center min-h-[45vh] w-full max-w-5xl">
+      <section className="flex items-center justify-center min-h-[45vh] w-full max-w-7xl">
         <h1
           role="timer"
           aria-live="polite"
           aria-atomic="true"
           aria-label={displayedText ? stripNiqqud(displayedText) : "טוען"}
-          className={`text-4xl sm:text-6xl md:text-7xl lg:text-[5.5rem] xl:text-[6.5rem] leading-relaxed font-light tracking-wide text-center transition-opacity duration-500 ease-in-out select-none ${
+          className={`leading-[1.45] font-medium tracking-wide text-center transition-opacity duration-500 ease-in-out select-none ${
             displayedText ? getThemeTextClass() : "text-neutral-600"
           } ${isFading ? "opacity-0" : "opacity-100"}`}
           style={{
+            fontSize: clockFontSize,
             textShadow: displayedText ? getThemeTextShadow() : "none",
           }}
         >
