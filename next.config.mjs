@@ -1,10 +1,29 @@
-import withPWAInit from "@ducanh2912/next-pwa";
+import withPWAInit, { runtimeCaching as defaultRuntimeCaching } from "@ducanh2912/next-pwa";
 
 const withPWA = withPWAInit({
   dest: "public",
   disable: process.env.NODE_ENV === "development",
   register: true,
   skipWaiting: true,
+  // next-pwa's default cacheStartUrl rule matches the literal basePath
+  // ("/wordsWatch") with no trailing slash, but trailingSlash: true below
+  // means the app is actually served at "/wordsWatch/" — so that rule never
+  // matches and the start page never gets cached for offline use. Replace it
+  // with a trailing-slash-agnostic rule that matches any navigation request.
+  cacheStartUrl: false,
+  workboxOptions: {
+    runtimeCaching: [
+      {
+        urlPattern: ({ request }) => request.mode === "navigate",
+        handler: "NetworkFirst",
+        options: {
+          cacheName: "start-url",
+          expiration: { maxEntries: 1 },
+        },
+      },
+      ...defaultRuntimeCaching,
+    ],
+  },
 });
 
 // GitHub Pages serves a project repo under /<repo-name>/, so in production the
