@@ -5,6 +5,7 @@ import { convertTimeToHebrewWords, stripNiqqud } from "./hebrewTimeHelper";
 import { useLocation } from "./useLocation";
 import { useWeather } from "./useWeather";
 import { getCurrentZmanPeriod, getAutoThemeColor } from "./solarTimes";
+import type { ShabbatStatus } from "./shabbatTimes";
 import type { WeatherIconKind, HourlyForecast } from "./useWeather";
 
 type ColorTheme = "amber" | "stone" | "sunset" | "auto";
@@ -139,6 +140,32 @@ export default function ClockPage() {
   const wantsLocation = zmanimMode || weatherMode || colorTheme === "auto";
   const location = useLocation(wantsLocation);
   const weather = useWeather(location, weatherMode);
+
+  // Nearest Shabbat/Yom Tov candle-lighting or havdalah moment, shown
+  // alongside the zmanim label. @hebcal/core is a hefty dependency, so it's
+  // code-split and only fetched once this feature is actually turned on.
+  // Recomputed every few minutes rather than on every clock tick — the
+  // Hebrew-calendar lookup is comparatively heavy and the answer only
+  // changes at the minute grain anyway.
+  const [shabbatStatus, setShabbatStatus] = useState<ShabbatStatus | null>(null);
+  useEffect(() => {
+    if (!zmanimMode) {
+      setShabbatStatus(null);
+      return;
+    }
+    let cancelled = false;
+    const update = async () => {
+      const { getShabbatStatus } = await import("./shabbatTimes");
+      if (cancelled) return;
+      setShabbatStatus(getShabbatStatus(new Date(), location.latitude, location.longitude));
+    };
+    update();
+    const interval = setInterval(update, 5 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [zmanimMode, location.latitude, location.longitude]);
 
   // Wake Lock states
   const [wakeLock, setWakeLock] = useState<WakeLockSentinel | null>(null);
@@ -432,6 +459,18 @@ export default function ClockPage() {
       : stripNiqqud(zmanLabelRaw)
     : null;
 
+  // 5b2. Nearest Shabbat/Yom Tov candle-lighting or havdalah, shown next to
+  // the zman label so it's always visible together with "times of day".
+  const shabbatTimeLabel = shabbatStatus
+    ? shabbatStatus.time.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" })
+    : null;
+  const shabbatLabelRaw = shabbatStatus ? `${shabbatStatus.label} · ${shabbatTimeLabel}` : null;
+  const shabbatLabel = shabbatLabelRaw
+    ? niqqudMode
+      ? shabbatLabelRaw
+      : stripNiqqud(shabbatLabelRaw)
+    : null;
+
   // 5c. "Auto" theme color, drifting with the sun's altitude
   const autoColor =
     colorTheme === "auto" && time
@@ -609,6 +648,17 @@ export default function ClockPage() {
         >
           {zmanLabel || " "}
         </p>
+
+        {/* Nearest Shabbat/Yom Tov candle-lighting or havdalah */}
+        {shabbatLabel && (
+          <p
+            aria-live="polite"
+            className={`text-sm sm:text-base font-light tracking-[0.15em] text-center opacity-60 transition-[opacity,color] duration-700 ease-in-out select-none ${getThemeTextClass()}`}
+            style={{ color: autoColorCss, fontFamily: FONT_FAMILY_VAR[fontChoice] }}
+          >
+            {shabbatLabel}
+          </p>
+        )}
       </section>
 
       {/* Floating minimal settings footer — collapsed behind a gear icon by
