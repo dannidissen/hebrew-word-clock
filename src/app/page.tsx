@@ -9,9 +9,17 @@ import type { ShabbatStatus } from "./shabbatTimes";
 import type { WeatherIconKind, HourlyForecast } from "./useWeather";
 
 type ColorTheme = "amber" | "stone" | "sunset" | "auto";
-type FontChoice = "assistant" | "david" | "frank" | "secular" | "rashi";
+type FontChoice = "assistant" | "david" | "frank" | "secular" | "rashi" | "stam" | "yiddishkeit";
 
-const FONT_CHOICES: FontChoice[] = ["assistant", "david", "frank", "secular", "rashi"];
+const FONT_CHOICES: FontChoice[] = [
+  "assistant",
+  "david",
+  "frank",
+  "secular",
+  "rashi",
+  "stam",
+  "yiddishkeit",
+];
 
 const FONT_FAMILY_VAR: Record<FontChoice, string> = {
   assistant: "var(--font-assistant)",
@@ -19,6 +27,8 @@ const FONT_FAMILY_VAR: Record<FontChoice, string> = {
   frank: "var(--font-frank-ruhl-libre)",
   secular: "var(--font-secular-one)",
   rashi: "var(--font-rashi)",
+  stam: "var(--font-stam)",
+  yiddishkeit: "var(--font-yiddishkeit)",
 };
 
 // Picks 3 evenly-spaced points from the next ~12 hours, instead of dumping
@@ -786,6 +796,8 @@ export default function ClockPage() {
                     { key: "frank", label: "פרנק רוהל" },
                     { key: "secular", label: "שאנן" },
                     { key: "rashi", label: "רש״י" },
+                    { key: "stam", label: "סת״ם" },
+                    { key: "yiddishkeit", label: "יידישקייט" },
                   ] as { key: FontChoice; label: string }[]
                 ).map(({ key, label }) => (
                   <button
@@ -803,6 +815,20 @@ export default function ClockPage() {
                   </button>
                 ))}
               </div>
+              {/* Required credit for the Yiddishkeit font's free web-embedding license */}
+              {fontChoice === "yiddishkeit" && (
+                <p className="text-[9px] font-light text-neutral-600 px-1">
+                  גופן &quot;יידישקייט&quot; באדיבות{" "}
+                  <a
+                    href="https://alefalefalef.co.il"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline hover:text-neutral-400"
+                  >
+                    אאא בית לטיפוגרפיה עברית
+                  </a>
+                </p>
+              )}
             </div>
           </div>
         )}
