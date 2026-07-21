@@ -1,5 +1,11 @@
 import type { Metadata, Viewport } from "next";
-import { Assistant, David_Libre, Frank_Ruhl_Libre, Secular_One } from "next/font/google";
+import {
+  Assistant,
+  David_Libre,
+  Frank_Ruhl_Libre,
+  Secular_One,
+  Noto_Rashi_Hebrew,
+} from "next/font/google";
 import "./globals.css";
 
 const assistant = Assistant({
@@ -27,6 +33,14 @@ const secularOne = Secular_One({
   subsets: ["hebrew"],
   variable: "--font-secular-one",
   weight: "400",
+});
+
+// Semi-cursive Rashi-script typeface (based on 15th-century Sephardic
+// commentary writing), for readers who want the clock in that register.
+const notoRashiHebrew = Noto_Rashi_Hebrew({
+  subsets: ["hebrew"],
+  variable: "--font-rashi",
+  weight: ["400", "500", "600", "700"],
 });
 
 // Note: the <link rel="manifest"> that Next injects from app/manifest.ts is NOT
@@ -57,7 +71,7 @@ export default function RootLayout({
   return (
     <html lang="he" dir="rtl" className="h-full">
       <body
-        className={`${assistant.variable} ${davidLibre.variable} ${frankRuhlLibre.variable} ${secularOne.variable} font-sans antialiased bg-black text-amber-100 h-full w-full`}
+        className={`${assistant.variable} ${davidLibre.variable} ${frankRuhlLibre.variable} ${secularOne.variable} ${notoRashiHebrew.variable} font-sans antialiased bg-black text-amber-100 h-full w-full`}
       >
         {children}
       </body>

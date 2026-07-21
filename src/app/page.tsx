@@ -9,13 +9,16 @@ import type { ShabbatStatus } from "./shabbatTimes";
 import type { WeatherIconKind, HourlyForecast } from "./useWeather";
 
 type ColorTheme = "amber" | "stone" | "sunset" | "auto";
-type FontChoice = "assistant" | "david" | "frank" | "secular";
+type FontChoice = "assistant" | "david" | "frank" | "secular" | "rashi";
+
+const FONT_CHOICES: FontChoice[] = ["assistant", "david", "frank", "secular", "rashi"];
 
 const FONT_FAMILY_VAR: Record<FontChoice, string> = {
   assistant: "var(--font-assistant)",
   david: "var(--font-david-libre)",
   frank: "var(--font-frank-ruhl-libre)",
   secular: "var(--font-secular-one)",
+  rashi: "var(--font-rashi)",
 };
 
 // Picks 3 evenly-spaced points from the next ~12 hours, instead of dumping
@@ -213,10 +216,7 @@ export default function ClockPage() {
     if (storedZmanim !== null) setZmanimMode(storedZmanim === "true");
 
     const storedFont = localStorage.getItem("fontChoice") as FontChoice;
-    if (
-      storedFont !== null &&
-      ["assistant", "david", "frank", "secular"].includes(storedFont)
-    ) {
+    if (storedFont !== null && FONT_CHOICES.includes(storedFont)) {
       setFontChoice(storedFont);
     }
 
@@ -669,9 +669,9 @@ export default function ClockPage() {
         }`}
       >
         {settingsOpen && (
-          <div className="flex flex-col gap-3 w-full max-w-xs sm:max-w-sm bg-neutral-950/50 backdrop-blur-md border border-neutral-900/60 p-3.5 rounded-3xl shadow-2xl">
+          <div className="animate-panel-in flex flex-col gap-4 w-full max-w-xs sm:max-w-sm bg-neutral-950/60 backdrop-blur-md border border-neutral-800/60 p-4 rounded-[28px] shadow-2xl shadow-black/50">
             {/* תצוגה: how the clock itself reads */}
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-2">
               <span className="text-[9px] font-medium tracking-widest text-neutral-600 px-1">
                 תצוגה
               </span>
@@ -693,7 +693,7 @@ export default function ClockPage() {
 
             {/* מסך: device/screen behavior */}
             {(wakeLockSupported || fullscreenSupported) && (
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-2 pt-3.5 border-t border-neutral-800/60">
                 <span className="text-[9px] font-medium tracking-widest text-neutral-600 px-1">
                   מסך
                 </span>
@@ -724,12 +724,15 @@ export default function ClockPage() {
               </div>
             )}
 
-            {/* צבע וגופן: appearance */}
-            <div className="flex items-center justify-between gap-3 pt-2 border-t border-neutral-900/60">
-              <div className="flex items-center gap-1.5">
+            {/* צבע: color theme */}
+            <div className="flex flex-col gap-2 pt-3.5 border-t border-neutral-800/60">
+              <span className="text-[9px] font-medium tracking-widest text-neutral-600 px-1">
+                צבע
+              </span>
+              <div className="flex items-center gap-2.5 px-1">
                 <button
                   onClick={() => handleThemeChange("amber")}
-                  className={`w-4 h-4 rounded-full bg-amber-200/90 border transition-transform duration-300 ${
+                  className={`w-5 h-5 rounded-full bg-amber-200/90 border transition-transform duration-300 ${
                     colorTheme === "amber"
                       ? "scale-125 border-white"
                       : "border-transparent hover:scale-110"
@@ -738,7 +741,7 @@ export default function ClockPage() {
                 />
                 <button
                   onClick={() => handleThemeChange("stone")}
-                  className={`w-4 h-4 rounded-full bg-stone-300 border transition-transform duration-300 ${
+                  className={`w-5 h-5 rounded-full bg-stone-300 border transition-transform duration-300 ${
                     colorTheme === "stone"
                       ? "scale-125 border-white"
                       : "border-transparent hover:scale-110"
@@ -747,7 +750,7 @@ export default function ClockPage() {
                 />
                 <button
                   onClick={() => handleThemeChange("sunset")}
-                  className={`w-4 h-4 rounded-full bg-orange-200/95 border transition-transform duration-300 ${
+                  className={`w-5 h-5 rounded-full bg-orange-200/95 border transition-transform duration-300 ${
                     colorTheme === "sunset"
                       ? "scale-125 border-white"
                       : "border-transparent hover:scale-110"
@@ -756,7 +759,7 @@ export default function ClockPage() {
                 />
                 <button
                   onClick={() => handleThemeChange("auto")}
-                  className={`w-4 h-4 rounded-full border transition-transform duration-300 ${
+                  className={`w-5 h-5 rounded-full border transition-transform duration-300 ${
                     colorTheme === "auto"
                       ? "scale-125 border-white"
                       : "border-transparent hover:scale-110"
@@ -768,14 +771,21 @@ export default function ClockPage() {
                   title="אוטומטי (לפי אור היום)"
                 />
               </div>
+            </div>
 
-              <div className="flex items-center gap-1">
+            {/* גופן: clock typeface */}
+            <div className="flex flex-col gap-2 pt-3.5 border-t border-neutral-800/60">
+              <span className="text-[9px] font-medium tracking-widest text-neutral-600 px-1">
+                גופן
+              </span>
+              <div className="flex flex-wrap items-center gap-2 px-1">
                 {(
                   [
                     { key: "assistant", label: "רגיל" },
                     { key: "david", label: "דוד" },
                     { key: "frank", label: "פרנק רוהל" },
                     { key: "secular", label: "שאנן" },
+                    { key: "rashi", label: "רש״י" },
                   ] as { key: FontChoice; label: string }[]
                 ).map(({ key, label }) => (
                   <button
@@ -783,13 +793,13 @@ export default function ClockPage() {
                     onClick={() => handleFontChange(key)}
                     title={label}
                     style={{ fontFamily: FONT_FAMILY_VAR[key] }}
-                    className={`w-7 h-7 rounded-full text-sm flex items-center justify-center border transition-all duration-300 ${
+                    className={`w-9 h-9 rounded-2xl text-lg flex items-center justify-center border transition-all duration-300 ${
                       fontChoice === key
-                        ? getThemeButtonActive()
-                        : "border-transparent text-neutral-500 hover:text-neutral-300"
+                        ? `${getThemeButtonActive()} bg-white/5`
+                        : "border-transparent text-neutral-500 hover:text-neutral-300 hover:bg-white/5"
                     }`}
                   >
-                    א
+                    אב
                   </button>
                 ))}
               </div>

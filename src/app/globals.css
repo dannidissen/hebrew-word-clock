@@ -54,3 +54,26 @@ html, body {
     animation: none;
   }
 }
+
+/* Settings panel entrance, so opening it feels like something settling into
+   place rather than an abrupt pop-in. */
+@keyframes panelIn {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-panel-in {
+  animation: panelIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-panel-in {
+    animation: none;
+  }
+}
