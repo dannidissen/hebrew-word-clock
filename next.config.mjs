@@ -6,8 +6,8 @@ const withPWA = withPWAInit({
   register: true,
   skipWaiting: true,
   // next-pwa's default cacheStartUrl rule matches the literal basePath
-  // ("/wordsWatch") with no trailing slash, but trailingSlash: true below
-  // means the app is actually served at "/wordsWatch/" — so that rule never
+  // ("/hebrew-word-clock") with no trailing slash, but trailingSlash: true below
+  // means the app is actually served at "/hebrew-word-clock/" — so that rule never
   // matches and the start page never gets cached for offline use. Replace it
   // with a trailing-slash-agnostic rule that matches any navigation request.
   cacheStartUrl: false,
