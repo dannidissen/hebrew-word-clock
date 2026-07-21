@@ -2,8 +2,19 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { convertTimeToHebrewWords, stripNiqqud } from "./hebrewTimeHelper";
+import { useLocation } from "./useLocation";
+import { useWeather } from "./useWeather";
+import { getCurrentZmanLabel, getAutoThemeColor } from "./solarTimes";
 
-type ColorTheme = "amber" | "stone" | "sunset";
+type ColorTheme = "amber" | "stone" | "sunset" | "auto";
+type FontChoice = "assistant" | "david" | "frank" | "secular";
+
+const FONT_FAMILY_VAR: Record<FontChoice, string> = {
+  assistant: "var(--font-assistant)",
+  david: "var(--font-david-libre)",
+  frank: "var(--font-frank-ruhl-libre)",
+  secular: "var(--font-secular-one)",
+};
 
 export default function ClockPage() {
   const [time, setTime] = useState<Date | null>(null);
@@ -14,6 +25,14 @@ export default function ClockPage() {
   const [preciseMode, setPreciseMode] = useState<boolean>(false);
   const [niqqudMode, setNiqqudMode] = useState<boolean>(true);
   const [colorTheme, setColorTheme] = useState<ColorTheme>("amber");
+  const [zmanimMode, setZmanimMode] = useState<boolean>(false);
+  const [fontChoice, setFontChoice] = useState<FontChoice>("assistant");
+  const [weatherMode, setWeatherMode] = useState<boolean>(false);
+
+  // Only prompt for GPS when a feature that actually needs it is on.
+  const wantsLocation = zmanimMode || weatherMode || colorTheme === "auto";
+  const location = useLocation(wantsLocation);
+  const weather = useWeather(location, weatherMode);
 
   // Wake Lock states
   const [wakeLock, setWakeLock] = useState<WakeLockSentinel | null>(null);
@@ -49,9 +68,26 @@ export default function ClockPage() {
     if (storedNiqqud !== null) setNiqqudMode(storedNiqqud === "true");
 
     const storedTheme = localStorage.getItem("colorTheme") as ColorTheme;
-    if (storedTheme !== null && ["amber", "stone", "sunset"].includes(storedTheme)) {
+    if (
+      storedTheme !== null &&
+      ["amber", "stone", "sunset", "auto"].includes(storedTheme)
+    ) {
       setColorTheme(storedTheme);
     }
+
+    const storedZmanim = localStorage.getItem("zmanimMode");
+    if (storedZmanim !== null) setZmanimMode(storedZmanim === "true");
+
+    const storedFont = localStorage.getItem("fontChoice") as FontChoice;
+    if (
+      storedFont !== null &&
+      ["assistant", "david", "frank", "secular"].includes(storedFont)
+    ) {
+      setFontChoice(storedFont);
+    }
+
+    const storedWeather = localStorage.getItem("weatherMode");
+    if (storedWeather !== null) setWeatherMode(storedWeather === "true");
   }, []);
 
   // 1b. Clock ticker.
@@ -220,6 +256,27 @@ export default function ClockPage() {
     localStorage.setItem("colorTheme", theme);
   };
 
+  const handleZmanimToggle = () => {
+    setZmanimMode((prev) => {
+      const next = !prev;
+      localStorage.setItem("zmanimMode", String(next));
+      return next;
+    });
+  };
+
+  const handleFontChange = (font: FontChoice) => {
+    setFontChoice(font);
+    localStorage.setItem("fontChoice", font);
+  };
+
+  const handleWeatherToggle = () => {
+    setWeatherMode((prev) => {
+      const next = !prev;
+      localStorage.setItem("weatherMode", String(next));
+      return next;
+    });
+  };
+
   // 5. Compute correct Hebrew phrasing
   const targetText = time
     ? convertTimeToHebrewWords(
@@ -230,6 +287,26 @@ export default function ClockPage() {
       )
     : "";
   const processedText = niqqudMode ? targetText : stripNiqqud(targetText);
+
+  // 5b. Current poetic zman (dawn/sunrise/twilight/nightfall/…), when enabled
+  const zmanLabelRaw =
+    zmanimMode && time
+      ? getCurrentZmanLabel(time, location.latitude, location.longitude)
+      : null;
+  const zmanLabel = zmanLabelRaw
+    ? niqqudMode
+      ? zmanLabelRaw
+      : stripNiqqud(zmanLabelRaw)
+    : null;
+
+  // 5c. "Auto" theme color, drifting with the sun's altitude
+  const autoColor =
+    colorTheme === "auto" && time
+      ? getAutoThemeColor(time, location.latitude, location.longitude)
+      : null;
+  const autoColorCss = autoColor
+    ? `rgb(${autoColor.r}, ${autoColor.g}, ${autoColor.b})`
+    : undefined;
 
   // 6. Smooth transition handling
   useEffect(() => {
@@ -255,6 +332,8 @@ export default function ClockPage() {
         return "text-stone-300";
       case "sunset":
         return "text-orange-200";
+      case "auto":
+        return ""; // color comes from the inline auto-color style instead
       case "amber":
       default:
         return "text-amber-100";
@@ -267,6 +346,10 @@ export default function ClockPage() {
         return "0 0 14px rgba(214, 211, 209, 0.25)";
       case "sunset":
         return "0 0 14px rgba(254, 215, 170, 0.25)";
+      case "auto":
+        return autoColor
+          ? `0 0 16px rgba(${autoColor.r}, ${autoColor.g}, ${autoColor.b}, 0.3)`
+          : "0 0 14px rgba(254, 243, 199, 0.25)";
       case "amber":
       default:
         return "0 0 14px rgba(254, 243, 199, 0.25)";
@@ -287,6 +370,8 @@ export default function ClockPage() {
         return "border-stone-500 text-stone-200";
       case "sunset":
         return "border-orange-400 text-orange-200";
+      case "auto":
+        return "border-sky-200 text-sky-100";
       case "amber":
       default:
         return "border-amber-400 text-amber-100";
@@ -298,23 +383,62 @@ export default function ClockPage() {
       className="flex flex-col items-center justify-center min-h-screen w-full bg-black select-none relative overflow-hidden transition-colors duration-1000 px-6"
       style={{ cursor: isIdle ? "none" : "default" }}
     >
+      {/* Small weather corner readout */}
+      {weatherMode && weather && (
+        <div
+          className={`fixed top-4 right-4 sm:top-6 sm:right-6 text-neutral-400 text-xs sm:text-sm font-light tracking-wide select-none transition-opacity duration-700 z-10 ${
+            isIdle ? "opacity-40" : "opacity-70"
+          }`}
+        >
+          <span dir="ltr">{weather.temperatureC}°</span>
+          <span className="mx-1.5">·</span>
+          <span>
+            {niqqudMode ? weather.description : stripNiqqud(weather.description)}
+          </span>
+        </div>
+      )}
+
       {/* Visual Clock Screen Wrapper to Prevent Shift */}
-      <section className="flex items-center justify-center min-h-[45vh] w-full max-w-7xl">
+      <section className="flex flex-col items-center justify-center min-h-[45vh] w-full max-w-7xl gap-3">
         <h1
           role="timer"
           aria-live="polite"
           aria-atomic="true"
           aria-label={displayedText ? stripNiqqud(displayedText) : "טוען"}
-          className={`leading-[1.45] font-medium tracking-wide text-center transition-opacity duration-500 ease-in-out select-none ${
+          className={`leading-[1.45] font-medium tracking-wide text-center transition-[opacity,color] ease-in-out select-none ${
             displayedText ? getThemeTextClass() : "text-neutral-600"
           } ${isFading ? "opacity-0" : "opacity-100"}`}
           style={{
             fontSize: clockFontSize,
+            fontFamily: FONT_FAMILY_VAR[fontChoice],
+            color: displayedText ? autoColorCss : undefined,
             textShadow: displayedText ? getThemeTextShadow() : "none",
+            transitionDuration: "500ms, 3000ms",
           }}
         >
-          {displayedText || "טוען..."}
+          <span className="flex flex-wrap items-baseline justify-center gap-x-[0.3em] gap-y-2">
+            {(displayedText || "טוען...").split(" ").map((word, i) => (
+              <span
+                key={`${displayedText}-${i}`}
+                className="inline-block animate-word-in"
+                style={{ animationDelay: `${i * 70}ms` }}
+              >
+                {word}
+              </span>
+            ))}
+          </span>
         </h1>
+
+        {/* Poetic zman label — appears only around dawn/sunrise/twilight/nightfall */}
+        <p
+          aria-live="polite"
+          className={`text-lg sm:text-xl md:text-2xl font-light tracking-[0.2em] text-center transition-[opacity,color] duration-700 ease-in-out select-none ${getThemeTextClass()} ${
+            zmanLabel ? "opacity-70" : "opacity-0"
+          }`}
+          style={{ color: autoColorCss, fontFamily: FONT_FAMILY_VAR[fontChoice] }}
+        >
+          {zmanLabel || " "}
+        </p>
       </section>
 
       {/* Floating minimal settings footer */}
@@ -346,6 +470,30 @@ export default function ClockPage() {
             }`}
           >
             {niqqudMode ? "ניקוד: מופעל" : "ניקוד: כבוי"}
+          </button>
+
+          {/* Zmanim (Jewish daily times) toggle */}
+          <button
+            onClick={handleZmanimToggle}
+            className={`px-4 py-1.5 rounded-full text-[11px] font-medium tracking-wider transition-all duration-300 border ${
+              zmanimMode
+                ? getThemeButtonActive()
+                : "border-transparent text-neutral-500 hover:text-neutral-300"
+            }`}
+          >
+            זמני היום
+          </button>
+
+          {/* Weather corner readout toggle */}
+          <button
+            onClick={handleWeatherToggle}
+            className={`px-4 py-1.5 rounded-full text-[11px] font-medium tracking-wider transition-all duration-300 border ${
+              weatherMode
+                ? getThemeButtonActive()
+                : "border-transparent text-neutral-500 hover:text-neutral-300"
+            }`}
+          >
+            מזג אוויר
           </button>
 
           {/* Screen Sleep toggle */}
@@ -414,6 +562,48 @@ export default function ClockPage() {
               }`}
               title="שקיעה"
             />
+            <button
+              onClick={() => handleThemeChange("auto")}
+              className={`w-4 h-4 rounded-full border transition-transform duration-300 ${
+                colorTheme === "auto"
+                  ? "scale-125 border-white"
+                  : "border-transparent hover:scale-110"
+              }`}
+              style={{
+                background:
+                  "conic-gradient(from 180deg, #60748f, #a582ba, #fb923c, #fde047, #fef3c7, #60748f)",
+              }}
+              title="אוטומטי (לפי אור היום)"
+            />
+          </div>
+
+          {/* Separation line */}
+          <span className="h-4 w-[1px] bg-neutral-800 mx-1 hidden sm:inline" />
+
+          {/* Font selectors */}
+          <div className="flex items-center gap-1 px-1">
+            {(
+              [
+                { key: "assistant", label: "רגיל" },
+                { key: "david", label: "דוד" },
+                { key: "frank", label: "פרנק רוהל" },
+                { key: "secular", label: "שאנן" },
+              ] as { key: FontChoice; label: string }[]
+            ).map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => handleFontChange(key)}
+                title={label}
+                style={{ fontFamily: FONT_FAMILY_VAR[key] }}
+                className={`w-7 h-7 rounded-full text-sm flex items-center justify-center border transition-all duration-300 ${
+                  fontChoice === key
+                    ? getThemeButtonActive()
+                    : "border-transparent text-neutral-500 hover:text-neutral-300"
+                }`}
+              >
+                א
+              </button>
+            ))}
           </div>
         </div>
 
