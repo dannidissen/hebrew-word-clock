@@ -5,7 +5,7 @@ import { convertTimeToHebrewWords, stripNiqqud } from "./hebrewTimeHelper";
 import { useLocation } from "./useLocation";
 import { useWeather } from "./useWeather";
 import { getCurrentZmanPeriod, getAutoThemeColor } from "./solarTimes";
-import type { WeatherIconKind } from "./useWeather";
+import type { WeatherIconKind, HourlyForecast } from "./useWeather";
 
 type ColorTheme = "amber" | "stone" | "sunset" | "auto";
 type FontChoice = "assistant" | "david" | "frank" | "secular";
@@ -16,6 +16,19 @@ const FONT_FAMILY_VAR: Record<FontChoice, string> = {
   frank: "var(--font-frank-ruhl-libre)",
   secular: "var(--font-secular-one)",
 };
+
+// Picks 3 evenly-spaced points from the next ~12 hours, instead of dumping
+// the full 24-hour list — a glance-able summary rather than a data table.
+function forecastCheckpoints(hourly: HourlyForecast[]): HourlyForecast[] {
+  const spacing = 4; // hours between checkpoints
+  const count = 3;
+  const picks: HourlyForecast[] = [];
+  for (let i = 1; i <= count; i++) {
+    const hour = hourly[i * spacing];
+    if (hour) picks.push(hour);
+  }
+  return picks;
+}
 
 // Minimal stroke icons for the weather readout, one per WeatherIconKind.
 // currentColor lets them inherit the active theme's text color.
@@ -501,29 +514,29 @@ export default function ClockPage() {
             </span>
           </div>
 
-          {/* Hourly forecast scroll */}
+          {/* Minimal forecast summary — a few checkpoints, not a full scroll */}
           {weather.hourly.length > 0 && (
             <div
-              className={`overflow-x-auto flex gap-2 pb-2 rounded-lg border border-neutral-900/60 bg-neutral-950/40 backdrop-blur-md px-3 py-2 sm:px-3 sm:py-2 text-xs sm:text-sm select-none transition-opacity duration-700 ${getThemeTextClass()} ${
-                isIdle ? "opacity-50" : "opacity-90"
+              className={`flex items-center justify-center gap-3 sm:gap-4 rounded-full border border-neutral-900/60 bg-neutral-950/40 backdrop-blur-md px-3.5 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm select-none transition-opacity duration-700 ${getThemeTextClass()} ${
+                isIdle ? "opacity-40" : "opacity-80"
               }`}
             >
-              {weather.hourly.map((hour) => (
+              {forecastCheckpoints(weather.hourly).map((hour) => (
                 <div
                   key={hour.time.getTime()}
-                  className="flex flex-col items-center gap-1 shrink-0 whitespace-nowrap"
+                  className="flex items-center gap-1 shrink-0 whitespace-nowrap"
                 >
-                  <div className="text-[0.7em] opacity-70">
+                  <span className="opacity-60">
                     {hour.time.toLocaleTimeString([], {
                       hour: "2-digit",
                       minute: "2-digit",
                       hour12: false,
                     })}
-                  </div>
-                  <WeatherIcon kind={hour.icon} className="w-4 h-4 sm:w-5 sm:h-5" />
-                  <div dir="ltr" className="font-medium">
+                  </span>
+                  <WeatherIcon kind={hour.icon} className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  <span dir="ltr" className="font-medium">
                     {hour.temperatureC}°
-                  </div>
+                  </span>
                 </div>
               ))}
             </div>
