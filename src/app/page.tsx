@@ -5,7 +5,7 @@ import { convertTimeToHebrewWords, stripNiqqud } from "./hebrewTimeHelper";
 import { useLocation } from "./useLocation";
 import { useWeather } from "./useWeather";
 import { getCurrentZmanPeriod, getAutoThemeColor } from "./solarTimes";
-import type { ShabbatStatus } from "./shabbatTimes";
+import type { SpecialTimeEntry } from "./shabbatTimes";
 import type { WeatherIconKind, HourlyForecast } from "./useWeather";
 
 type ColorTheme = "amber" | "stone" | "sunset" | "auto";
@@ -154,23 +154,25 @@ export default function ClockPage() {
   const location = useLocation(wantsLocation);
   const weather = useWeather(location, weatherMode);
 
-  // Nearest Shabbat/Yom Tov candle-lighting or havdalah moment, shown
-  // alongside the zmanim label. @hebcal/core is a hefty dependency, so it's
-  // code-split and only fetched once this feature is actually turned on.
-  // Recomputed every few minutes rather than on every clock tick — the
-  // Hebrew-calendar lookup is comparatively heavy and the answer only
-  // changes at the minute grain anyway.
-  const [shabbatStatus, setShabbatStatus] = useState<ShabbatStatus | null>(null);
+  // Upcoming Shabbat/Yom Tov/fast-day entry and exit moments, shown
+  // alongside the zmanim label. Usually just the next candle-lighting and
+  // havdalah, but when a fast day (e.g. Tish'a B'Av) falls close to Shabbat
+  // both occasions' times are included together. @hebcal/core is a hefty
+  // dependency, so it's code-split and only fetched once this feature is
+  // actually turned on. Recomputed every few minutes rather than on every
+  // clock tick — the Hebrew-calendar lookup is comparatively heavy and the
+  // answer only changes at the minute grain anyway.
+  const [specialTimes, setSpecialTimes] = useState<SpecialTimeEntry[]>([]);
   useEffect(() => {
     if (!zmanimMode) {
-      setShabbatStatus(null);
+      setSpecialTimes([]);
       return;
     }
     let cancelled = false;
     const update = async () => {
-      const { getShabbatStatus } = await import("./shabbatTimes");
+      const { getUpcomingSpecialTimes } = await import("./shabbatTimes");
       if (cancelled) return;
-      setShabbatStatus(getShabbatStatus(new Date(), location.latitude, location.longitude));
+      setSpecialTimes(getUpcomingSpecialTimes(new Date(), location.latitude, location.longitude));
     };
     update();
     const interval = setInterval(update, 5 * 60 * 1000);
@@ -469,17 +471,16 @@ export default function ClockPage() {
       : stripNiqqud(zmanLabelRaw)
     : null;
 
-  // 5b2. Nearest Shabbat/Yom Tov candle-lighting or havdalah, shown next to
-  // the zman label so it's always visible together with "times of day".
-  const shabbatTimeLabel = shabbatStatus
-    ? shabbatStatus.time.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" })
-    : null;
-  const shabbatLabelRaw = shabbatStatus ? `${shabbatStatus.label} · ${shabbatTimeLabel}` : null;
-  const shabbatLabel = shabbatLabelRaw
-    ? niqqudMode
-      ? shabbatLabelRaw
-      : stripNiqqud(shabbatLabelRaw)
-    : null;
+  // 5b2. Upcoming Shabbat/Yom Tov/fast-day entry and exit times, shown next
+  // to the zman label so they're always visible together with "times of
+  // day". Usually one line; a fast day clustered near Shabbat adds more.
+  const specialTimeLines = specialTimes.map((entry) => {
+    const timeLabel = entry.time.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" });
+    const raw = entry.dayPrefix
+      ? `${entry.dayPrefix} · ${entry.label} · ${timeLabel}`
+      : `${entry.label} · ${timeLabel}`;
+    return niqqudMode ? raw : stripNiqqud(raw);
+  });
 
   // 5c. "Auto" theme color, drifting with the sun's altitude
   const autoColor =
@@ -659,15 +660,20 @@ export default function ClockPage() {
           {zmanLabel || " "}
         </p>
 
-        {/* Nearest Shabbat/Yom Tov candle-lighting or havdalah */}
-        {shabbatLabel && (
-          <p
-            aria-live="polite"
-            className={`text-sm sm:text-base font-light tracking-[0.15em] text-center opacity-60 transition-[opacity,color] duration-700 ease-in-out select-none ${getThemeTextClass()}`}
-            style={{ color: autoColorCss, fontFamily: FONT_FAMILY_VAR[fontChoice] }}
-          >
-            {shabbatLabel}
-          </p>
+        {/* Upcoming Shabbat/Yom Tov/fast-day entry and exit times */}
+        {specialTimeLines.length > 0 && (
+          <div className="flex flex-col items-center gap-0.5">
+            {specialTimeLines.map((line, i) => (
+              <p
+                key={i}
+                aria-live="polite"
+                className={`text-sm sm:text-base font-light tracking-[0.15em] text-center opacity-60 transition-[opacity,color] duration-700 ease-in-out select-none ${getThemeTextClass()}`}
+                style={{ color: autoColorCss, fontFamily: FONT_FAMILY_VAR[fontChoice] }}
+              >
+                {line}
+              </p>
+            ))}
+          </div>
         )}
       </section>
 
