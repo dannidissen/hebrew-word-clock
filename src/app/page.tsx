@@ -42,6 +42,7 @@ export default function ClockPage() {
   // Fullscreen states (hides the browser chrome — great on tablets)
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [fullscreenSupported, setFullscreenSupported] = useState<boolean>(false);
+  const [fullscreenMessage, setFullscreenMessage] = useState<string | null>(null);
 
   // Idle state to auto-hide UI settings controls
   const [isIdle, setIsIdle] = useState<boolean>(false);
@@ -167,12 +168,25 @@ export default function ClockPage() {
       if (!doc.fullscreenElement && !doc.webkitFullscreenElement) {
         if (docEl.requestFullscreen) await docEl.requestFullscreen();
         else if (docEl.webkitRequestFullscreen) await docEl.webkitRequestFullscreen();
+        else throw new Error("Fullscreen API not present");
+
+        // Some Android browsers (notably Amazon Silk) resolve the promise
+        // without ever actually entering fullscreen — no error, no effect.
+        // Catch that silent no-op so the user gets feedback instead of a
+        // button that appears to do nothing.
+        if (!doc.fullscreenElement && !doc.webkitFullscreenElement) {
+          throw new Error("Fullscreen request had no effect");
+        }
       } else {
         if (doc.exitFullscreen) await doc.exitFullscreen();
         else if (doc.webkitExitFullscreen) await doc.webkitExitFullscreen();
       }
     } catch (err) {
       console.error("Failed to toggle fullscreen:", err);
+      setFullscreenMessage(
+        "מסך מלא לא נתמך בדפדפן הזה. נסה/י להוסיף את האתר למסך הבית — כך הוא ייפתח במסך מלא אוטומטית."
+      );
+      setTimeout(() => setFullscreenMessage(null), 6000);
     }
   };
 
@@ -611,6 +625,13 @@ export default function ClockPage() {
         {!wakeLockActive && (
           <p className="text-[10px] font-light text-neutral-600 text-center tracking-wide">
             להפעלה קבועה, מומלץ לבטל את כיבוי המסך האוטומטי בהגדרות המכשיר.
+          </p>
+        )}
+
+        {/* Fullscreen failure feedback (some Android browsers reject or no-op silently) */}
+        {fullscreenMessage && (
+          <p className="max-w-xs text-[10px] font-light text-amber-200/80 text-center tracking-wide bg-neutral-950/60 backdrop-blur-md border border-neutral-900/60 rounded-2xl px-3 py-2">
+            {fullscreenMessage}
           </p>
         )}
       </footer>
