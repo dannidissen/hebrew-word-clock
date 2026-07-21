@@ -103,6 +103,24 @@ function WeatherIcon({ kind, className }: { kind: WeatherIconKind; className?: s
   }
 }
 
+// Gear icon for the collapsed settings toggle.
+function SettingsIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="12" r="3.2" />
+      <path d="M12 3.5v2M12 18.5v2M20.5 12h-2M5.5 12h-2M17.8 6.2l-1.4 1.4M7.6 16.4l-1.4 1.4M17.8 17.8l-1.4-1.4M7.6 7.6 6.2 6.2" />
+    </svg>
+  );
+}
+
 export default function ClockPage() {
   const [time, setTime] = useState<Date | null>(null);
   const [displayedText, setDisplayedText] = useState<string>("");
@@ -115,6 +133,7 @@ export default function ClockPage() {
   const [zmanimMode, setZmanimMode] = useState<boolean>(false);
   const [fontChoice, setFontChoice] = useState<FontChoice>("assistant");
   const [weatherMode, setWeatherMode] = useState<boolean>(false);
+  const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
 
   // Only prompt for GPS when a feature that actually needs it is on.
   const wantsLocation = zmanimMode || weatherMode || colorTheme === "auto";
@@ -492,6 +511,11 @@ export default function ClockPage() {
     }
   };
 
+  const pillClass = (active: boolean, extra = "") =>
+    `px-3.5 py-1.5 rounded-full text-[11px] font-medium tracking-wider transition-all duration-300 border ${
+      active ? getThemeButtonActive() : "border-transparent text-neutral-500 hover:text-neutral-300"
+    } ${extra}`;
+
   return (
     <main
       className="flex flex-col items-center justify-center min-h-screen w-full bg-black select-none relative overflow-hidden transition-colors duration-1000 px-6"
@@ -587,171 +611,155 @@ export default function ClockPage() {
         </p>
       </section>
 
-      {/* Floating minimal settings footer */}
+      {/* Floating minimal settings footer — collapsed behind a gear icon by
+          default, with grouped categories inside instead of one long row. */}
       <footer
-        className={`fixed bottom-6 left-0 right-0 flex flex-col items-center gap-4 transition-all duration-700 px-4 z-50 ${
+        className={`fixed bottom-6 left-0 right-0 flex flex-col items-center gap-3 transition-all duration-700 px-4 z-50 ${
           isIdle ? "opacity-0 pointer-events-none translate-y-3" : "opacity-100 translate-y-0"
         }`}
       >
-        <div className="flex flex-wrap items-center justify-center gap-2 max-w-xl bg-neutral-950/40 backdrop-blur-md border border-neutral-900/60 p-2.5 rounded-full shadow-2xl">
-          {/* Mode rounded/precise toggle */}
-          <button
-            onClick={handlePreciseToggle}
-            className={`px-4 py-1.5 rounded-full text-[11px] font-medium tracking-wider transition-all duration-300 border ${
-              preciseMode
-                ? getThemeButtonActive()
-                : "border-transparent text-neutral-500 hover:text-neutral-300"
-            }`}
-          >
-            {preciseMode ? "מוד דקות: מדויק" : "מוד דקות: פואטי"}
-          </button>
+        {settingsOpen && (
+          <div className="flex flex-col gap-3 w-full max-w-xs sm:max-w-sm bg-neutral-950/50 backdrop-blur-md border border-neutral-900/60 p-3.5 rounded-3xl shadow-2xl">
+            {/* תצוגה: how the clock itself reads */}
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[9px] font-medium tracking-widest text-neutral-600 px-1">
+                תצוגה
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                <button onClick={handlePreciseToggle} className={pillClass(preciseMode)}>
+                  {preciseMode ? "מוד: מדויק" : "מוד: פואטי"}
+                </button>
+                <button onClick={handleNiqqudToggle} className={pillClass(niqqudMode)}>
+                  {niqqudMode ? "ניקוד: מופעל" : "ניקוד: כבוי"}
+                </button>
+                <button onClick={handleZmanimToggle} className={pillClass(zmanimMode)}>
+                  זמני היום
+                </button>
+                <button onClick={handleWeatherToggle} className={pillClass(weatherMode)}>
+                  מזג אוויר
+                </button>
+              </div>
+            </div>
 
-          {/* Niqqud toggle */}
-          <button
-            onClick={handleNiqqudToggle}
-            className={`px-4 py-1.5 rounded-full text-[11px] font-medium tracking-wider transition-all duration-300 border ${
-              niqqudMode
-                ? getThemeButtonActive()
-                : "border-transparent text-neutral-500 hover:text-neutral-300"
-            }`}
-          >
-            {niqqudMode ? "ניקוד: מופעל" : "ניקוד: כבוי"}
-          </button>
+            {/* מסך: device/screen behavior */}
+            {(wakeLockSupported || fullscreenSupported) && (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[9px] font-medium tracking-widest text-neutral-600 px-1">
+                  מסך
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {wakeLockSupported && (
+                    <button
+                      onClick={toggleWakeLock}
+                      className={pillClass(wakeLockActive, "flex items-center gap-2")}
+                    >
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${
+                          wakeLockActive ? "bg-emerald-400 animate-pulse" : "bg-neutral-600"
+                        }`}
+                      />
+                      {wakeLockActive ? "מסך ער" : "מנע שינה"}
+                    </button>
+                  )}
+                  {fullscreenSupported && (
+                    <button
+                      onClick={toggleFullscreen}
+                      aria-label={isFullscreen ? "צא ממסך מלא" : "מסך מלא"}
+                      className={pillClass(isFullscreen)}
+                    >
+                      {isFullscreen ? "צא ממסך מלא" : "מסך מלא"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
 
-          {/* Zmanim (Jewish daily times) toggle */}
-          <button
-            onClick={handleZmanimToggle}
-            className={`px-4 py-1.5 rounded-full text-[11px] font-medium tracking-wider transition-all duration-300 border ${
-              zmanimMode
-                ? getThemeButtonActive()
-                : "border-transparent text-neutral-500 hover:text-neutral-300"
-            }`}
-          >
-            זמני היום
-          </button>
+            {/* צבע וגופן: appearance */}
+            <div className="flex items-center justify-between gap-3 pt-2 border-t border-neutral-900/60">
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => handleThemeChange("amber")}
+                  className={`w-4 h-4 rounded-full bg-amber-200/90 border transition-transform duration-300 ${
+                    colorTheme === "amber"
+                      ? "scale-125 border-white"
+                      : "border-transparent hover:scale-110"
+                  }`}
+                  title="ענבר"
+                />
+                <button
+                  onClick={() => handleThemeChange("stone")}
+                  className={`w-4 h-4 rounded-full bg-stone-300 border transition-transform duration-300 ${
+                    colorTheme === "stone"
+                      ? "scale-125 border-white"
+                      : "border-transparent hover:scale-110"
+                  }`}
+                  title="אבן"
+                />
+                <button
+                  onClick={() => handleThemeChange("sunset")}
+                  className={`w-4 h-4 rounded-full bg-orange-200/95 border transition-transform duration-300 ${
+                    colorTheme === "sunset"
+                      ? "scale-125 border-white"
+                      : "border-transparent hover:scale-110"
+                  }`}
+                  title="שקיעה"
+                />
+                <button
+                  onClick={() => handleThemeChange("auto")}
+                  className={`w-4 h-4 rounded-full border transition-transform duration-300 ${
+                    colorTheme === "auto"
+                      ? "scale-125 border-white"
+                      : "border-transparent hover:scale-110"
+                  }`}
+                  style={{
+                    background:
+                      "conic-gradient(from 180deg, #60748f, #a582ba, #fb923c, #fde047, #fef3c7, #60748f)",
+                  }}
+                  title="אוטומטי (לפי אור היום)"
+                />
+              </div>
 
-          {/* Weather corner readout toggle */}
-          <button
-            onClick={handleWeatherToggle}
-            className={`px-4 py-1.5 rounded-full text-[11px] font-medium tracking-wider transition-all duration-300 border ${
-              weatherMode
-                ? getThemeButtonActive()
-                : "border-transparent text-neutral-500 hover:text-neutral-300"
-            }`}
-          >
-            מזג אוויר
-          </button>
-
-          {/* Screen Sleep toggle */}
-          {wakeLockSupported && (
-            <button
-              onClick={toggleWakeLock}
-              className={`px-4 py-1.5 rounded-full text-[11px] font-medium tracking-wider transition-all duration-300 border flex items-center gap-2 ${
-                wakeLockActive
-                  ? getThemeButtonActive()
-                  : "border-transparent text-neutral-500 hover:text-neutral-300"
-              }`}
-            >
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${
-                  wakeLockActive ? "bg-emerald-400 animate-pulse" : "bg-neutral-600"
-                }`}
-              />
-              {wakeLockActive ? "מסך ער" : "מנע שינה"}
-            </button>
-          )}
-
-          {/* Fullscreen toggle */}
-          {fullscreenSupported && (
-            <button
-              onClick={toggleFullscreen}
-              aria-label={isFullscreen ? "צא ממסך מלא" : "מסך מלא"}
-              className={`px-4 py-1.5 rounded-full text-[11px] font-medium tracking-wider transition-all duration-300 border ${
-                isFullscreen
-                  ? getThemeButtonActive()
-                  : "border-transparent text-neutral-500 hover:text-neutral-300"
-              }`}
-            >
-              {isFullscreen ? "צא ממסך מלא" : "מסך מלא"}
-            </button>
-          )}
-
-          {/* Separation line */}
-          <span className="h-4 w-[1px] bg-neutral-800 mx-1 hidden sm:inline" />
-
-          {/* Color theme selectors */}
-          <div className="flex items-center gap-1.5 px-2">
-            <button
-              onClick={() => handleThemeChange("amber")}
-              className={`w-4 h-4 rounded-full bg-amber-200/90 border transition-transform duration-300 ${
-                colorTheme === "amber"
-                  ? "scale-125 border-white"
-                  : "border-transparent hover:scale-110"
-              }`}
-              title="ענבר"
-            />
-            <button
-              onClick={() => handleThemeChange("stone")}
-              className={`w-4 h-4 rounded-full bg-stone-300 border transition-transform duration-300 ${
-                colorTheme === "stone"
-                  ? "scale-125 border-white"
-                  : "border-transparent hover:scale-110"
-              }`}
-              title="אבן"
-            />
-            <button
-              onClick={() => handleThemeChange("sunset")}
-              className={`w-4 h-4 rounded-full bg-orange-200/95 border transition-transform duration-300 ${
-                colorTheme === "sunset"
-                  ? "scale-125 border-white"
-                  : "border-transparent hover:scale-110"
-              }`}
-              title="שקיעה"
-            />
-            <button
-              onClick={() => handleThemeChange("auto")}
-              className={`w-4 h-4 rounded-full border transition-transform duration-300 ${
-                colorTheme === "auto"
-                  ? "scale-125 border-white"
-                  : "border-transparent hover:scale-110"
-              }`}
-              style={{
-                background:
-                  "conic-gradient(from 180deg, #60748f, #a582ba, #fb923c, #fde047, #fef3c7, #60748f)",
-              }}
-              title="אוטומטי (לפי אור היום)"
-            />
+              <div className="flex items-center gap-1">
+                {(
+                  [
+                    { key: "assistant", label: "רגיל" },
+                    { key: "david", label: "דוד" },
+                    { key: "frank", label: "פרנק רוהל" },
+                    { key: "secular", label: "שאנן" },
+                  ] as { key: FontChoice; label: string }[]
+                ).map(({ key, label }) => (
+                  <button
+                    key={key}
+                    onClick={() => handleFontChange(key)}
+                    title={label}
+                    style={{ fontFamily: FONT_FAMILY_VAR[key] }}
+                    className={`w-7 h-7 rounded-full text-sm flex items-center justify-center border transition-all duration-300 ${
+                      fontChoice === key
+                        ? getThemeButtonActive()
+                        : "border-transparent text-neutral-500 hover:text-neutral-300"
+                    }`}
+                  >
+                    א
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
+        )}
 
-          {/* Separation line */}
-          <span className="h-4 w-[1px] bg-neutral-800 mx-1 hidden sm:inline" />
-
-          {/* Font selectors */}
-          <div className="flex items-center gap-1 px-1">
-            {(
-              [
-                { key: "assistant", label: "רגיל" },
-                { key: "david", label: "דוד" },
-                { key: "frank", label: "פרנק רוהל" },
-                { key: "secular", label: "שאנן" },
-              ] as { key: FontChoice; label: string }[]
-            ).map(({ key, label }) => (
-              <button
-                key={key}
-                onClick={() => handleFontChange(key)}
-                title={label}
-                style={{ fontFamily: FONT_FAMILY_VAR[key] }}
-                className={`w-7 h-7 rounded-full text-sm flex items-center justify-center border transition-all duration-300 ${
-                  fontChoice === key
-                    ? getThemeButtonActive()
-                    : "border-transparent text-neutral-500 hover:text-neutral-300"
-                }`}
-              >
-                א
-              </button>
-            ))}
-          </div>
-        </div>
+        {/* Settings toggle */}
+        <button
+          onClick={() => setSettingsOpen((v) => !v)}
+          aria-label={settingsOpen ? "סגור הגדרות" : "פתח הגדרות"}
+          aria-expanded={settingsOpen}
+          className={`w-11 h-11 rounded-full flex items-center justify-center bg-neutral-950/50 backdrop-blur-md border shadow-2xl transition-all duration-300 ${
+            settingsOpen
+              ? getThemeButtonActive()
+              : "border-neutral-900/60 text-neutral-400 hover:text-neutral-200"
+          }`}
+        >
+          <SettingsIcon className="w-5 h-5" />
+        </button>
 
         {/* Small wake-lock fallback guidance note */}
         {!wakeLockActive && (
