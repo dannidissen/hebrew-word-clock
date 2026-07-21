@@ -99,13 +99,20 @@ export function useWeather(coords: Coordinates, enabled: boolean): WeatherInfo |
         const temperatureC = Math.round(data?.current?.temperature_2m);
         const code = data?.current?.weather_code;
 
-        // Parse hourly forecast (take next 24 hours)
+        // Parse hourly forecast (next 24 hours from now). Open-Meteo's
+        // hourly array starts at 00:00 of the current day, not from "now" —
+        // find the first entry at/after the current moment before slicing,
+        // otherwise this ends up showing hours that already passed.
         const hourly: HourlyForecast[] = [];
-        const times = data?.hourly?.time ?? [];
-        const temps = data?.hourly?.temperature_2m ?? [];
-        const codes = data?.hourly?.weather_code ?? [];
+        const times: string[] = data?.hourly?.time ?? [];
+        const temps: number[] = data?.hourly?.temperature_2m ?? [];
+        const codes: number[] = data?.hourly?.weather_code ?? [];
 
-        for (let i = 0; i < Math.min(24, times.length); i++) {
+        const now = Date.now();
+        let startIndex = times.findIndex((t) => new Date(t).getTime() >= now);
+        if (startIndex === -1) startIndex = 0;
+
+        for (let i = startIndex; i < Math.min(startIndex + 24, times.length); i++) {
           const time = new Date(times[i]);
           hourly.push({
             time,
