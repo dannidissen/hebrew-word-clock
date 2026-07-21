@@ -8,10 +8,10 @@ const withPWA = withPWAInit({
 });
 
 // GitHub Pages serves a project repo under /<repo-name>/, so in production the
-// app lives at https://<user>.github.io/wordsWatch/. basePath/assetPrefix make
+// app lives at https://<user>.github.io/hebrew-word-clock/. basePath/assetPrefix make
 // Next emit every asset URL with that prefix. In dev we stay at the root.
 const isProd = process.env.NODE_ENV === "production";
-const basePath = isProd ? "/wordsWatch" : "";
+const basePath = isProd ? "/hebrew-word-clock" : "";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {

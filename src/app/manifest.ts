@@ -2,7 +2,7 @@ import { MetadataRoute } from "next";
 
 // Note: all URLs here are RELATIVE (no leading slash). A relative URL in a web
 // manifest resolves against the manifest's own location, so when the app is
-// hosted under a sub-path (e.g. GitHub Pages /wordsWatch/) the start_url, scope,
+// hosted under a sub-path (e.g. GitHub Pages /hebrew-word-clock/) the start_url, scope,
 // and icons all resolve correctly without hard-coding the base path.
 export default function manifest(): MetadataRoute.Manifest {
   return {
