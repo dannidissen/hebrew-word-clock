@@ -486,17 +486,48 @@ export default function ClockPage() {
     >
       {/* Weather corner readout */}
       {weatherMode && weather && (
-        <div
-          className={`fixed top-4 right-4 sm:top-6 sm:right-6 flex items-center gap-2 rounded-full border border-neutral-900/60 bg-neutral-950/40 backdrop-blur-md px-3.5 py-2 sm:px-4 sm:py-2.5 text-sm sm:text-base font-medium tracking-wide select-none transition-opacity duration-700 z-10 ${getThemeTextClass()} ${
-            isIdle ? "opacity-50" : "opacity-95"
-          }`}
-        >
-          <WeatherIcon kind={weather.icon} className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
-          <span dir="ltr">{weather.temperatureC}°</span>
-          <span className="opacity-50">·</span>
-          <span>
-            {niqqudMode ? weather.description : stripNiqqud(weather.description)}
-          </span>
+        <div className="fixed top-4 right-4 sm:top-6 sm:right-6 z-10 flex flex-col gap-2 max-w-sm">
+          {/* Current weather pill */}
+          <div
+            className={`flex items-center gap-2 rounded-full border border-neutral-900/60 bg-neutral-950/40 backdrop-blur-md px-3.5 py-2 sm:px-4 sm:py-2.5 text-sm sm:text-base font-medium tracking-wide select-none transition-opacity duration-700 ${getThemeTextClass()} ${
+              isIdle ? "opacity-50" : "opacity-95"
+            }`}
+          >
+            <WeatherIcon kind={weather.icon} className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
+            <span dir="ltr">{weather.temperatureC}°</span>
+            <span className="opacity-50">·</span>
+            <span>
+              {niqqudMode ? weather.description : stripNiqqud(weather.description)}
+            </span>
+          </div>
+
+          {/* Hourly forecast scroll */}
+          {weather.hourly.length > 0 && (
+            <div
+              className={`overflow-x-auto flex gap-2 pb-2 rounded-lg border border-neutral-900/60 bg-neutral-950/40 backdrop-blur-md px-3 py-2 sm:px-3 sm:py-2 text-xs sm:text-sm select-none transition-opacity duration-700 ${getThemeTextClass()} ${
+                isIdle ? "opacity-50" : "opacity-90"
+              }`}
+            >
+              {weather.hourly.map((hour) => (
+                <div
+                  key={hour.time.getTime()}
+                  className="flex flex-col items-center gap-1 shrink-0 whitespace-nowrap"
+                >
+                  <div className="text-[0.7em] opacity-70">
+                    {hour.time.toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      hour12: false,
+                    })}
+                  </div>
+                  <WeatherIcon kind={hour.icon} className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <div dir="ltr" className="font-medium">
+                    {hour.temperatureC}°
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

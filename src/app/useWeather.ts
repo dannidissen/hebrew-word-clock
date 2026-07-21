@@ -13,10 +13,17 @@ export type WeatherIconKind =
   | "snow"
   | "thunder";
 
+export interface HourlyForecast {
+  time: Date;
+  temperatureC: number;
+  icon: WeatherIconKind;
+}
+
 export interface WeatherInfo {
   temperatureC: number;
   description: string;
   icon: WeatherIconKind;
+  hourly: HourlyForecast[];
 }
 
 // WMO weather codes grouped into the icon families used by WeatherIcon.
@@ -85,17 +92,34 @@ export function useWeather(coords: Coordinates, enabled: boolean): WeatherInfo |
 
     const fetchWeather = async () => {
       try {
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&timezone=auto`;
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&hourly=temperature_2m,weather_code&timezone=auto`;
         const res = await fetch(url);
         if (!res.ok || cancelled) return;
         const data = await res.json();
         const temperatureC = Math.round(data?.current?.temperature_2m);
         const code = data?.current?.weather_code;
+
+        // Parse hourly forecast (take next 24 hours)
+        const hourly: HourlyForecast[] = [];
+        const times = data?.hourly?.time ?? [];
+        const temps = data?.hourly?.temperature_2m ?? [];
+        const codes = data?.hourly?.weather_code ?? [];
+
+        for (let i = 0; i < Math.min(24, times.length); i++) {
+          const time = new Date(times[i]);
+          hourly.push({
+            time,
+            temperatureC: Math.round(temps[i]),
+            icon: iconKindForCode(codes[i]),
+          });
+        }
+
         if (!cancelled && Number.isFinite(temperatureC)) {
           setWeather({
             temperatureC,
             description: describeWeatherCode(code),
             icon: iconKindForCode(code),
+            hourly,
           });
         }
       } catch {
