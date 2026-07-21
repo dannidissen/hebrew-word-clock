@@ -30,7 +30,7 @@ const secularOne = Secular_One({
 });
 
 // Note: the <link rel="manifest"> that Next injects from app/manifest.ts is NOT
-// rewritten with basePath (a Next bug), so its href is patched to /wordsWatch/…
+// rewritten with basePath (a Next bug), so its href is patched to /hebrew-word-clock/…
 // after export by scripts/postbuild.mjs.
 export const metadata: Metadata = {
   title: "שעון מילים פואטי",
