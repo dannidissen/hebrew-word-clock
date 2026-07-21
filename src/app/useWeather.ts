@@ -3,9 +3,33 @@
 import { useEffect, useState } from "react";
 import type { Coordinates } from "./useLocation";
 
+export type WeatherIconKind =
+  | "clear"
+  | "partly-cloudy"
+  | "cloudy"
+  | "fog"
+  | "drizzle"
+  | "rain"
+  | "snow"
+  | "thunder";
+
 export interface WeatherInfo {
   temperatureC: number;
   description: string;
+  icon: WeatherIconKind;
+}
+
+// WMO weather codes grouped into the icon families used by WeatherIcon.
+function iconKindForCode(code: number): WeatherIconKind {
+  if (code === 0 || code === 1) return "clear";
+  if (code === 2) return "partly-cloudy";
+  if (code === 3) return "cloudy";
+  if (code === 45 || code === 48) return "fog";
+  if (code >= 51 && code <= 57) return "drizzle";
+  if ((code >= 61 && code <= 67) || (code >= 80 && code <= 82)) return "rain";
+  if ((code >= 71 && code <= 77) || code === 85 || code === 86) return "snow";
+  if (code >= 95) return "thunder";
+  return "cloudy";
 }
 
 // WMO weather codes (used by Open-Meteo) mapped to short vocalized Hebrew.
@@ -68,7 +92,11 @@ export function useWeather(coords: Coordinates, enabled: boolean): WeatherInfo |
         const temperatureC = Math.round(data?.current?.temperature_2m);
         const code = data?.current?.weather_code;
         if (!cancelled && Number.isFinite(temperatureC)) {
-          setWeather({ temperatureC, description: describeWeatherCode(code) });
+          setWeather({
+            temperatureC,
+            description: describeWeatherCode(code),
+            icon: iconKindForCode(code),
+          });
         }
       } catch {
         // offline or blocked — silently keep the last-known reading

@@ -1,10 +1,14 @@
 /**
  * Sun position calculations (NOAA/SunCalc-style formulas), used to derive
- * poetic Jewish daily time markers and the sun-driven color theme.
+ * the day's zmanim (halachic times) and the sun-driven color theme.
  *
  * These are astronomical approximations for a decorative clock — not a
  * halachic authority. Angle thresholds for "olat hashachar" and "tzeit
- * hakochavim" follow commonly cited approximations (16.1° / 8.5°).
+ * hakochavim" follow commonly cited approximations (16.1° / 8.5°), and the
+ * proportional-hour zmanim (Shema/Tefila/Mincha/Plag) follow the Gra/Vilna
+ * Gaon opinion (day split sunrise-to-sunset), the most commonly used default
+ * — not necessarily the practice of every community. For anything
+ * halachically load-bearing, confirm against a proper luach.
  */
 
 const RAD = Math.PI / 180;
@@ -76,7 +80,12 @@ function getSetJ(
 export interface Zmanim {
   alotHaShachar: Date | null; // dawn, sun at -16.1°
   sunrise: Date | null; // sun at -0.833°
+  sofZmanKriatShemaGra: Date | null; // latest Shema, sunrise + 3 halachic hours (Gra)
+  sofZmanTefilaGra: Date | null; // latest Shacharit, sunrise + 4 halachic hours (Gra)
   solarNoon: Date;
+  minchaGedola: Date | null; // earliest Mincha, sunrise + 6.5 halachic hours
+  minchaKetana: Date | null; // preferred Mincha, sunrise + 9.5 halachic hours
+  plagHaMincha: Date | null; // sunrise + 10.75 halachic hours
   sunset: Date | null; // sun at -0.833°
   beinHashmashot: Date | null; // twilight start = sunset
   tzeitHakochavim: Date | null; // nightfall, sun at -8.5°
@@ -134,12 +143,27 @@ export function getZmanim(date: Date, lat: number, lon: number): Zmanim {
     return fromJulian(Jrise);
   };
 
+  const sunrise = sunriseAt(-0.833);
+  const sunset = sunsetAt(-0.833);
+  // Halachic "proportional hour" (Gra/Vilna Gaon opinion): the day from
+  // sunrise to sunset split into 12 equal hours, rather than 60 fixed
+  // minutes each.
+  const shaaZmanit =
+    sunrise && sunset ? (sunset.getTime() - sunrise.getTime()) / 12 : null;
+  const plusHours = (hours: number): Date | null =>
+    sunrise && shaaZmanit ? new Date(sunrise.getTime() + hours * shaaZmanit) : null;
+
   return {
     alotHaShachar: sunriseAt(-16.1),
-    sunrise: sunriseAt(-0.833),
+    sunrise,
+    sofZmanKriatShemaGra: plusHours(3),
+    sofZmanTefilaGra: plusHours(4),
     solarNoon: fromJulian(Jnoon),
-    sunset: sunsetAt(-0.833),
-    beinHashmashot: sunsetAt(-0.833),
+    minchaGedola: plusHours(6.5),
+    minchaKetana: plusHours(9.5),
+    plagHaMincha: plusHours(10.75),
+    sunset,
+    beinHashmashot: sunset,
     tzeitHakochavim: sunsetAt(-8.5),
     solarMidnight: fromJulian(Jmidnight),
   };
@@ -190,44 +214,68 @@ export function getAutoThemeColor(date: Date, lat: number, lon: number): RgbColo
   };
 }
 
-const MINUTE_MS = 60 * 1000;
+export interface ZmanPeriod {
+  /** The halachic period `now` currently falls within — always defined. */
+  label: string;
+  /** When this period ends (start of the next one), or null if unknown. */
+  endsAt: Date | null;
+}
+
+interface ZmanEvent {
+  time: Date;
+  label: string;
+}
+
+// One calendar day's period *starts*, in chronological order. Each entry
+// names the period that begins at that moment, so consecutive entries
+// implicitly define an interval (e.g. sunrise → sofZmanKriatShemaGra is
+// "זְמַן קְרִיאַת שְׁמַע"). Built from a single day's Zmanim so the whole
+// cycle — including the pre-dawn "night" stretch and the post-nightfall
+// "evening" stretch — falls out naturally once yesterday/today/tomorrow are
+// concatenated in getCurrentZmanPeriod.
+function dayEvents(z: Zmanim): ZmanEvent[] {
+  const events: Array<[Date | null, string]> = [
+    [z.solarMidnight, "לַיְלָה"],
+    [z.alotHaShachar, "עֲלוֹת הַשַּׁחַר"],
+    [z.sunrise, "זְמַן קְרִיאַת שְׁמַע"],
+    [z.sofZmanKriatShemaGra, "זְמַן תְּפִלָּה"],
+    [z.sofZmanTefilaGra, "בֹּקֶר"],
+    [z.solarNoon, "אַחַר הַצָּהֳרַיִם"],
+    [z.minchaGedola, "זְמַן מִנְחָה גְּדוֹלָה"],
+    [z.minchaKetana, "זְמַן מִנְחָה קְטַנָּה"],
+    [z.plagHaMincha, "פֶּלֶג הַמִּנְחָה"],
+    [z.sunset, "בֵּין הַשְּׁמָשׁוֹת"],
+    [z.tzeitHakochavim, "עֶרֶב"],
+  ];
+  return events
+    .filter((e): e is [Date, string] => e[0] !== null)
+    .map(([time, label]) => ({ time, label }));
+}
 
 /**
- * Returns the current poetic zman label if `now` falls within a short window
- * around one of the day's key sun events, or null otherwise (plain clock).
+ * Returns the halachic period `now` currently falls in (always defined,
+ * e.g. "זְמַן קְרִיאַת שְׁמַע"), plus when that period ends — the practically
+ * useful form of "what time is it" for daily observance, rather than a
+ * label that only appears briefly around each transition.
  */
-export function getCurrentZmanLabel(
-  now: Date,
-  lat: number,
-  lon: number
-): string | null {
-  const today = getZmanim(now, lat, lon);
-  const yesterday = getZmanim(new Date(now.getTime() - DAY_MS), lat, lon);
+export function getCurrentZmanPeriod(now: Date, lat: number, lon: number): ZmanPeriod {
   const t = now.getTime();
+  const all = [
+    ...dayEvents(getZmanim(new Date(t - DAY_MS), lat, lon)),
+    ...dayEvents(getZmanim(now, lat, lon)),
+    ...dayEvents(getZmanim(new Date(t + DAY_MS), lat, lon)),
+  ].sort((a, b) => a.time.getTime() - b.time.getTime());
 
-  const within = (center: Date | null, beforeMin: number, afterMin: number) =>
-    !!center &&
-    t >= center.getTime() - beforeMin * MINUTE_MS &&
-    t < center.getTime() + afterMin * MINUTE_MS;
+  let current: ZmanEvent | null = null;
+  let next: ZmanEvent | null = null;
+  for (const event of all) {
+    if (event.time.getTime() <= t) {
+      current = event;
+    } else {
+      next = event;
+      break;
+    }
+  }
 
-  // Check yesterday's nightfall too, in case we're just after local midnight.
-  if (within(today.alotHaShachar, 0, 20) || within(yesterday.alotHaShachar, 0, 20))
-    return "עֲלוֹת הַשַּׁחַר";
-  if (within(today.sunrise, 5, 20) || within(yesterday.sunrise, 5, 20))
-    return "הָנֵץ הַחַמָּה";
-  if (within(today.solarNoon, 10, 10)) return "חֲצוֹת הַיּוֹם";
-  if (within(today.sunset, 15, 0)) return "שְׁקִיעָה";
-  if (
-    today.sunset &&
-    today.tzeitHakochavim &&
-    t >= today.sunset.getTime() &&
-    t < today.tzeitHakochavim.getTime()
-  )
-    return "בֵּין הַעַרְבַּיִם";
-  if (within(today.tzeitHakochavim, 0, 20) || within(yesterday.tzeitHakochavim, 0, 20))
-    return "צֵאת הַכּוֹכָבִים";
-  if (within(today.solarMidnight, 10, 10) || within(yesterday.solarMidnight, 10, 10))
-    return "חֲצוֹת הַלַּיְלָה";
-
-  return null;
+  return { label: current?.label ?? "לַיְלָה", endsAt: next?.time ?? null };
 }

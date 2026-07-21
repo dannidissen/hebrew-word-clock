@@ -4,7 +4,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { convertTimeToHebrewWords, stripNiqqud } from "./hebrewTimeHelper";
 import { useLocation } from "./useLocation";
 import { useWeather } from "./useWeather";
-import { getCurrentZmanLabel, getAutoThemeColor } from "./solarTimes";
+import { getCurrentZmanPeriod, getAutoThemeColor } from "./solarTimes";
+import type { WeatherIconKind } from "./useWeather";
 
 type ColorTheme = "amber" | "stone" | "sunset" | "auto";
 type FontChoice = "assistant" | "david" | "frank" | "secular";
@@ -15,6 +16,79 @@ const FONT_FAMILY_VAR: Record<FontChoice, string> = {
   frank: "var(--font-frank-ruhl-libre)",
   secular: "var(--font-secular-one)",
 };
+
+// Minimal stroke icons for the weather readout, one per WeatherIconKind.
+// currentColor lets them inherit the active theme's text color.
+function WeatherIcon({ kind, className }: { kind: WeatherIconKind; className?: string }) {
+  const common = {
+    className,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.5,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
+  switch (kind) {
+    case "clear":
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="4.5" />
+          <path d="M12 2.5v2.5M12 19v2.5M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2.5 12H5M19 12h2.5M4.2 19.8L6 18M18 6l1.8-1.8" />
+        </svg>
+      );
+    case "partly-cloudy":
+      return (
+        <svg {...common}>
+          <circle cx="9" cy="8.5" r="3.5" />
+          <path d="M9 2.5v1.5M4.5 5l1 1M2.5 9.5H4" />
+          <path d="M8.5 19h8a3.7 3.7 0 0 0 .5-7.36A5 5 0 0 0 7.3 13.2 3.5 3.5 0 0 0 8.5 19Z" />
+        </svg>
+      );
+    case "fog":
+      return (
+        <svg {...common}>
+          <path d="M6 8.5a4.5 4.5 0 0 1 8.65-1.73A3.7 3.7 0 0 1 19 10.5" />
+          <path d="M3.5 14h17M5.5 17.5h13M7.5 21h9" />
+        </svg>
+      );
+    case "drizzle":
+      return (
+        <svg {...common}>
+          <path d="M6.5 12h9a3.7 3.7 0 0 0 .5-7.36A5 5 0 0 0 5.3 6.2 3.5 3.5 0 0 0 6.5 12Z" />
+          <path d="M8 16v2M12 16v2M16 16v2" />
+        </svg>
+      );
+    case "rain":
+      return (
+        <svg {...common}>
+          <path d="M6.5 11h9a3.7 3.7 0 0 0 .5-7.36A5 5 0 0 0 5.3 5.2 3.5 3.5 0 0 0 6.5 11Z" />
+          <path d="M7.5 15.5 6 19M12 15.5 10.5 19M16.5 15.5 15 19" />
+        </svg>
+      );
+    case "snow":
+      return (
+        <svg {...common}>
+          <path d="M6.5 11h9a3.7 3.7 0 0 0 .5-7.36A5 5 0 0 0 5.3 5.2 3.5 3.5 0 0 0 6.5 11Z" />
+          <path d="M8 15.5v4M6 17.5h4M15 15.5v4M13 17.5h4" />
+        </svg>
+      );
+    case "thunder":
+      return (
+        <svg {...common}>
+          <path d="M6.5 10.5h9a3.7 3.7 0 0 0 .5-7.36A5 5 0 0 0 5.3 4.7a3.5 3.5 0 0 0 1.2 5.8Z" />
+          <path d="m13 13-3 5h3l-2 4" />
+        </svg>
+      );
+    case "cloudy":
+    default:
+      return (
+        <svg {...common}>
+          <path d="M6.5 17h10a4 4 0 0 0 .5-7.97A5.5 5.5 0 0 0 6.6 10.06 3.75 3.75 0 0 0 6.5 17Z" />
+        </svg>
+      );
+  }
+}
 
 export default function ClockPage() {
   const [time, setTime] = useState<Date | null>(null);
@@ -302,11 +376,24 @@ export default function ClockPage() {
     : "";
   const processedText = niqqudMode ? targetText : stripNiqqud(targetText);
 
-  // 5b. Current poetic zman (dawn/sunrise/twilight/nightfall/…), when enabled
-  const zmanLabelRaw =
+  // 5b. Current halachic period (e.g. "זְמַן קְרִיאַת שְׁמַע"), shown at all
+  // times when enabled — with its end time, since a deadline is what's
+  // actually useful, not just naming the period.
+  const zmanPeriod =
     zmanimMode && time
-      ? getCurrentZmanLabel(time, location.latitude, location.longitude)
+      ? getCurrentZmanPeriod(time, location.latitude, location.longitude)
       : null;
+  const zmanEndsAtLabel = zmanPeriod?.endsAt
+    ? zmanPeriod.endsAt.toLocaleTimeString("he-IL", {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : null;
+  const zmanLabelRaw = zmanPeriod
+    ? zmanEndsAtLabel
+      ? `${zmanPeriod.label} · עד ${zmanEndsAtLabel}`
+      : zmanPeriod.label
+    : null;
   const zmanLabel = zmanLabelRaw
     ? niqqudMode
       ? zmanLabelRaw
@@ -397,15 +484,16 @@ export default function ClockPage() {
       className="flex flex-col items-center justify-center min-h-screen w-full bg-black select-none relative overflow-hidden transition-colors duration-1000 px-6"
       style={{ cursor: isIdle ? "none" : "default" }}
     >
-      {/* Small weather corner readout */}
+      {/* Weather corner readout */}
       {weatherMode && weather && (
         <div
-          className={`fixed top-4 right-4 sm:top-6 sm:right-6 text-neutral-400 text-xs sm:text-sm font-light tracking-wide select-none transition-opacity duration-700 z-10 ${
-            isIdle ? "opacity-40" : "opacity-70"
+          className={`fixed top-4 right-4 sm:top-6 sm:right-6 flex items-center gap-2 rounded-full border border-neutral-900/60 bg-neutral-950/40 backdrop-blur-md px-3.5 py-2 sm:px-4 sm:py-2.5 text-sm sm:text-base font-medium tracking-wide select-none transition-opacity duration-700 z-10 ${getThemeTextClass()} ${
+            isIdle ? "opacity-50" : "opacity-95"
           }`}
         >
+          <WeatherIcon kind={weather.icon} className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
           <span dir="ltr">{weather.temperatureC}°</span>
-          <span className="mx-1.5">·</span>
+          <span className="opacity-50">·</span>
           <span>
             {niqqudMode ? weather.description : stripNiqqud(weather.description)}
           </span>
