@@ -12,6 +12,12 @@ export default function manifest(): MetadataRoute.Manifest {
     start_url: "./",
     scope: "./",
     display: "standalone",
+    // "fullscreen" hides the status bar too (not just the browser chrome that
+    // "standalone" hides) when the browser supports display_override — the
+    // most reliable way to get a true kiosk look on tablets, since the
+    // in-page Fullscreen API (see page.tsx's toggleFullscreen) is flaky on
+    // some Android browsers when the app isn't installed to the home screen.
+    display_override: ["fullscreen", "standalone", "browser"],
     orientation: "any",
     background_color: "#000000",
     theme_color: "#000000",
