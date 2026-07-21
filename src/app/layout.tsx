@@ -6,6 +6,7 @@ import {
   Secular_One,
   Noto_Rashi_Hebrew,
 } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 
 const assistant = Assistant({
@@ -43,6 +44,27 @@ const notoRashiHebrew = Noto_Rashi_Hebrew({
   weight: ["400", "500", "600", "700"],
 });
 
+// Stam Ashkenaz CLM — a Torah-scribal (STA"M) style scribal typeface, full
+// niqqud support. Self-hosted (not on Google Fonts): "Stam Ashkenaz" font by
+// Yoram Gnat / the Culmus project, GPLv2 with a font-embedding exception —
+// see src/app/fonts/STAM-LICENSE.txt for the exact clause.
+const stamAshkenaz = localFont({
+  src: "./fonts/stam-ashkenaz-clm-webfont.woff",
+  variable: "--font-stam",
+  weight: "400",
+});
+
+// Yiddishkeit AlefAlefAlef Bold — a bold display face from AAA (אאא בית
+// לטיפוגרפיה עברית), used here under their free web-embedding license
+// (under 1M monthly pageviews; see src/app/fonts/YIDDISHKEIT-LICENSE.pdf).
+// The license requires visible credit to אאא wherever the font is used —
+// see the credit line under the font picker in page.tsx.
+const yiddishkeit = localFont({
+  src: "./fonts/YiddishkeitAlefAlefAlef-Bold.woff",
+  variable: "--font-yiddishkeit",
+  weight: "700",
+});
+
 // Note: the <link rel="manifest"> that Next injects from app/manifest.ts is NOT
 // rewritten with basePath (a Next bug), so its href is patched to /hebrew-word-clock/…
 // after export by scripts/postbuild.mjs.
@@ -71,7 +93,7 @@ export default function RootLayout({
   return (
     <html lang="he" dir="rtl" className="h-full">
       <body
-        className={`${assistant.variable} ${davidLibre.variable} ${frankRuhlLibre.variable} ${secularOne.variable} ${notoRashiHebrew.variable} font-sans antialiased bg-black text-amber-100 h-full w-full`}
+        className={`${assistant.variable} ${davidLibre.variable} ${frankRuhlLibre.variable} ${secularOne.variable} ${notoRashiHebrew.variable} ${stamAshkenaz.variable} ${yiddishkeit.variable} font-sans antialiased bg-black text-amber-100 h-full w-full`}
       >
         {children}
       </body>
