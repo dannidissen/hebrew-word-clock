@@ -13,6 +13,7 @@ const COUNTDOWN_WINDOW_MS = 24 * 60 * 60 * 1000;
 import { convertTimeToHebrewWords, stripNiqqud } from "./hebrewTimeHelper";
 import { useLocation } from "./useLocation";
 import { useWeather } from "./useWeather";
+import { useNudge } from "./useNudge";
 import { getCurrentZmanPeriod, getUpcomingZmanim, getAutoThemeColor } from "./solarTimes";
 import type { SpecialTimeEntry } from "./shabbatTimes";
 import type { JewishCalendarInfo } from "./hebrewCalendar";
@@ -157,6 +158,11 @@ export default function ClockPage() {
   const [zmanimMode, setZmanimMode] = useState<boolean>(false);
   const [fontChoice, setFontChoice] = useState<FontChoice>("assistant");
   const [weatherMode, setWeatherMode] = useState<boolean>(false);
+  // nudgeBot secondary-screen widget: open tasks pulled from the user's private
+  // Worker. url+token live only in localStorage (the token is never committed).
+  const [nudgeMode, setNudgeMode] = useState<boolean>(false);
+  const [nudgeUrl, setNudgeUrl] = useState<string>("");
+  const [nudgeToken, setNudgeToken] = useState<string>("");
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
 
   // e-ink / Kindle mode: white background, black text, no animations, no glow.
@@ -202,6 +208,8 @@ export default function ClockPage() {
   const wantsLocation = zmanimMode || weatherMode || colorTheme === "auto";
   const location = useLocation(wantsLocation);
   const weather = useWeather(location, weatherMode);
+  // Nudge tasks are irrelevant on e-ink (slow refresh, monochrome) — never poll there.
+  const nudge = useNudge(nudgeUrl, nudgeToken, nudgeMode && !einkMode);
 
   // Upcoming Shabbat/Yom Tov/fast-day entry and exit moments, shown
   // alongside the zmanim label. Usually just the next candle-lighting and
@@ -324,6 +332,13 @@ export default function ClockPage() {
 
     const storedWeather = localStorage.getItem("weatherMode");
     if (storedWeather !== null) setWeatherMode(storedWeather === "true");
+
+    const storedNudge = localStorage.getItem("nudgeMode");
+    if (storedNudge !== null) setNudgeMode(storedNudge === "true");
+    const storedNudgeUrl = localStorage.getItem("nudgeUrl");
+    if (storedNudgeUrl !== null) setNudgeUrl(storedNudgeUrl);
+    const storedNudgeToken = localStorage.getItem("nudgeToken");
+    if (storedNudgeToken !== null) setNudgeToken(storedNudgeToken);
 
     // e-ink mode resolution, in priority order:
     //   1. explicit ?eink=1 / ?eink=0 URL param (best for a bookmarked kiosk),
@@ -640,6 +655,24 @@ export default function ClockPage() {
     });
   };
 
+  const handleNudgeToggle = () => {
+    setNudgeMode((prev) => {
+      const next = !prev;
+      localStorage.setItem("nudgeMode", String(next));
+      return next;
+    });
+  };
+
+  const handleNudgeUrlChange = (value: string) => {
+    setNudgeUrl(value);
+    localStorage.setItem("nudgeUrl", value);
+  };
+
+  const handleNudgeTokenChange = (value: string) => {
+    setNudgeToken(value);
+    localStorage.setItem("nudgeToken", value);
+  };
+
   const handleEinkToggle = () => {
     setEinkMode((prev) => {
       const next = !prev;
@@ -855,9 +888,16 @@ export default function ClockPage() {
     zmanLabel || zmanTimeLines.length > 0 || specialTimeLines.length > 0
   );
   const hasWeather = Boolean(weatherMode && weather);
+  const hasNudge = Boolean(
+    nudgeMode &&
+      !einkMode &&
+      nudgeUrl.trim() &&
+      nudgeToken.trim() &&
+      (nudge.data || nudge.status === "error")
+  );
   const isLandscape = viewport.w > 0 && viewport.w / viewport.h >= 1.25;
   const dashboardLayout =
-    isLandscape && viewport.w >= 700 && (hasSideContent || hasWeather);
+    isLandscape && viewport.w >= 700 && (hasSideContent || hasWeather || hasNudge);
 
   // The hero clock uses the full width; cap its height a bit more tightly in
   // the dashboard so the columns below it have room.
@@ -1085,6 +1125,66 @@ export default function ClockPage() {
     </div>
   ) : null;
 
+  // Nudge widget: only meaningful with a full config and off e-ink.
+  const nudgeActive =
+    nudgeMode && !einkMode && Boolean(nudgeUrl.trim()) && Boolean(nudgeToken.trim());
+
+  // Relative countdown to the next nudge check, recomputed each clock tick.
+  const nudgeNextLabel = (() => {
+    if (!nudge.data?.nextCheck || !time) return null;
+    const diffMs = new Date(nudge.data.nextCheck).getTime() - time.getTime();
+    if (isNaN(diffMs)) return null;
+    if (diffMs <= 0) return "בקרוב";
+    const mins = Math.round(diffMs / 60000);
+    if (mins < 60) return `בעוד ${mins} דק׳`;
+    const hrs = Math.floor(mins / 60);
+    const rem = mins % 60;
+    return rem ? `בעוד ${hrs} ש׳ ${rem} דק׳` : `בעוד ${hrs} ש׳`;
+  })();
+
+  const nudgeSubClass = `text-sm sm:text-base font-light tracking-[0.12em] text-center opacity-70 select-none ${
+    einkMode ? "text-black" : getThemeTextClass()
+  }`;
+
+  const nudgeNode =
+    nudgeActive && (nudge.data || nudge.status === "error") ? (
+      <div className="flex flex-col items-center gap-1.5">
+        {nudge.status === "error" && !nudge.data ? (
+          <p className={nudgeSubClass} style={textColorStyle}>
+            אין חיבור ל-nudge
+          </p>
+        ) : nudge.data?.paused ? (
+          <p className={nudgeSubClass} style={textColorStyle}>
+            🔕 הנדנוד כבוי
+          </p>
+        ) : nudge.data && nudge.data.tasks.length === 0 ? (
+          <p className={nudgeSubClass} style={textColorStyle}>
+            אין משימות פתוחות 🎉
+          </p>
+        ) : (
+          <div className="flex flex-col items-center gap-1">
+            {nudge.data!.tasks.slice(0, 6).map((t) => (
+              <p
+                key={t.id}
+                className={`text-base sm:text-lg font-normal tracking-[0.08em] text-center select-none ${
+                  einkMode ? "text-black" : `${getThemeTextClass()} opacity-95`
+                }`}
+                style={textColorStyle}
+              >
+                {t.needs_proof ? "📸 " : ""}
+                {t.name}
+              </p>
+            ))}
+          </div>
+        )}
+        {nudge.data && !nudge.data.paused && nudgeNextLabel && (
+          <p className={nudgeSubClass} style={textColorStyle} dir="rtl">
+            בדיקה הבאה {nudgeNextLabel}
+          </p>
+        )}
+      </div>
+    ) : null;
+
   return (
     <main
       className={`flex flex-col items-center justify-center min-h-screen w-full select-none relative overflow-hidden px-6 ${
@@ -1278,16 +1378,23 @@ export default function ClockPage() {
                 {weatherReadoutNode}
               </div>
             )}
+            {nudgeNode && (
+              <div className="flex flex-col items-center gap-2">
+                {columnHeader("מְשִׂימוֹת")}
+                {nudgeNode}
+              </div>
+            )}
             </div>
           </>
         ) : (
           /* Portrait: the original single centered stack, unchanged. */
-          (hasSideContent || jewishCalNode) && (
+          (hasSideContent || jewishCalNode || nudgeNode) && (
             <div className="flex flex-col gap-3 items-center w-full">
               {periodLabelNode}
               {zmanListNode}
               {jewishCalNode}
               {specialListNode}
+              {nudgeNode}
             </div>
           )
         )}
@@ -1330,8 +1437,66 @@ export default function ClockPage() {
                 <button onClick={handleWeatherToggle} className={pillClass(weatherMode)}>
                   מזג אוויר
                 </button>
+                <button onClick={handleNudgeToggle} className={pillClass(nudgeMode)}>
+                  משימות
+                </button>
               </div>
             </div>
+
+            {/* משימות nudge: config for the secondary-screen task widget.
+                Only shown when the toggle is on. The token lives only here in
+                localStorage — never committed — and e-ink hides the widget. */}
+            {nudgeMode && (
+              <div
+                className={`flex flex-col gap-2 pt-3.5 border-t ${
+                  einkMode ? "border-black/15" : "border-neutral-800/60"
+                }`}
+              >
+                <span
+                  className={`text-[9px] font-medium tracking-widest px-1 ${
+                    einkMode ? "text-neutral-700" : "text-neutral-600"
+                  }`}
+                >
+                  משימות (nudge)
+                </span>
+                <input
+                  type="url"
+                  inputMode="url"
+                  dir="ltr"
+                  placeholder="https://…workers.dev"
+                  value={nudgeUrl}
+                  onChange={(e) => handleNudgeUrlChange(e.target.value)}
+                  className={`w-full rounded-xl px-3 py-1.5 text-[11px] tracking-wide outline-none border ${
+                    einkMode
+                      ? "bg-white border-black/30 text-black placeholder:text-neutral-400"
+                      : "bg-neutral-900/70 border-neutral-700/70 text-neutral-200 placeholder:text-neutral-600"
+                  }`}
+                />
+                <input
+                  type="password"
+                  dir="ltr"
+                  placeholder="widget token"
+                  value={nudgeToken}
+                  onChange={(e) => handleNudgeTokenChange(e.target.value)}
+                  className={`w-full rounded-xl px-3 py-1.5 text-[11px] tracking-wide outline-none border ${
+                    einkMode
+                      ? "bg-white border-black/30 text-black placeholder:text-neutral-400"
+                      : "bg-neutral-900/70 border-neutral-700/70 text-neutral-200 placeholder:text-neutral-600"
+                  }`}
+                />
+                <span
+                  className={`text-[9px] leading-relaxed px-1 ${
+                    einkMode ? "text-neutral-600" : "text-neutral-500"
+                  }`}
+                >
+                  {einkMode
+                    ? "מוסתר על e-ink — עבור למסך רגיל כדי לראות."
+                    : nudge.status === "error"
+                    ? "אין חיבור — בדוק כתובת/טוקן ושה-Worker פרוס."
+                    : "נשמר מקומית בדפדפן בלבד."}
+                </span>
+              </div>
+            )}
 
             {/* מסך: device/screen behavior. Always rendered — it holds the
                 e-ink toggle, which must stay reachable even where wake-lock and
