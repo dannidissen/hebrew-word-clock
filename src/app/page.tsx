@@ -156,6 +156,12 @@ export default function ClockPage() {
   // preference, or auto-detected Kindle-class user agents (see mount effect).
   const [einkMode, setEinkMode] = useState<boolean>(false);
 
+  // Live viewport size, so the clock font can be sized in plain pixels from JS.
+  // We deliberately avoid CSS clamp()/min() for the font size: the Kindle's
+  // experimental browser runs an older WebKit that doesn't support them and
+  // silently drops the declaration, collapsing the clock to a tiny default.
+  const [viewport, setViewport] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+
   // Only prompt for GPS when a feature that actually needs it is on.
   const wantsLocation = zmanimMode || weatherMode || colorTheme === "auto";
   const location = useLocation(wantsLocation);
@@ -313,6 +319,19 @@ export default function ClockPage() {
       document.removeEventListener("visibilitychange", resync);
       window.removeEventListener("focus", resync);
       window.removeEventListener("pageshow", resync);
+    };
+  }, []);
+
+  // 1d. Track the viewport so the clock font size can be computed in JS pixels.
+  useEffect(() => {
+    const update = () =>
+      setViewport({ w: window.innerWidth, h: window.innerHeight });
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("orientationchange", update);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("orientationchange", update);
     };
   }, []);
 
@@ -602,11 +621,35 @@ export default function ClockPage() {
 
   // Scale the clock with the screen instead of fixed breakpoints, and let
   // short phrases (rounded mode) run larger than long precise-mode ones so
-  // both fill the display without overflowing. The vh term caps the size on
-  // wide-landscape tablets; the rem bounds keep phones and desktops sane.
+  // both fill the display without overflowing. The height term caps the size on
+  // wide-landscape tablets; the min/max bounds keep phones and desktops sane.
+  //
+  // Computed in JS pixels rather than CSS `clamp(3rem, min(Xvw, 20vh), 12rem)`
+  // so it works on the Kindle's older WebKit (which ignores clamp()/min()). On
+  // e-ink the panel is monochrome and held close, so we let the text fill a bit
+  // more of the width. The clamp() string is only an SSR/pre-measurement
+  // fallback; once mounted, the pixel value below takes over.
   const phraseLength = stripNiqqud(displayedText || "טוען...").length;
-  const vwFactor = phraseLength <= 16 ? 15 : phraseLength <= 26 ? 13 : 10.5;
-  const clockFontSize = `clamp(3rem, min(${vwFactor}vw, 20vh), 12rem)`;
+  const vwFactor = einkMode
+    ? phraseLength <= 16
+      ? 18
+      : phraseLength <= 26
+        ? 15
+        : 12
+    : phraseLength <= 16
+      ? 15
+      : phraseLength <= 26
+        ? 13
+        : 10.5;
+  const heightCap = einkMode ? 0.26 : 0.2;
+  const clockFontSize = viewport.w
+    ? `${Math.round(
+        Math.max(
+          48,
+          Math.min((vwFactor / 100) * viewport.w, heightCap * viewport.h, 192)
+        )
+      )}px`
+    : `clamp(3rem, min(${vwFactor}vw, ${heightCap * 100}vh), 12rem)`;
 
   const getThemeButtonActive = () => {
     switch (colorTheme) {
