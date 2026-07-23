@@ -19,7 +19,7 @@
 /public/workbox-*.js
 /public/workbox-*.js.map
 /public/fallback-*.js
-/public/wordsWatch/
+/public/hebrew-word-clock/
 
 # production
 /build
