@@ -279,3 +279,55 @@ export function getCurrentZmanPeriod(now: Date, lat: number, lon: number): ZmanP
 
   return { label: current?.label ?? "לַיְלָה", endsAt: next?.time ?? null };
 }
+
+export interface UpcomingZman {
+  /** Vocalized name, e.g. "סוֹף זְמַן קְרִיאַת שְׁמַע". */
+  label: string;
+  /** The moment this zman occurs. */
+  time: Date;
+}
+
+// The curated set of "deadline" zmanim worth surfacing as explicit clock
+// times (rather than only as invisible period boundaries): the two morning
+// davening cutoffs, plus sunset and nightfall. Listed here with the Zmanim
+// field they read from; order doesn't matter (the result is time-sorted).
+const KEY_ZMANIM: Array<{ key: keyof Zmanim; label: string }> = [
+  { key: "sofZmanKriatShemaGra", label: "סוֹף זְמַן קְרִיאַת שְׁמַע" },
+  { key: "sofZmanTefilaGra", label: "סוֹף זְמַן תְּפִלָּה" },
+  { key: "sunset", label: "שְׁקִיעָה" },
+  { key: "tzeitHakochavim", label: "צֵאת הַכּוֹכָבִים" },
+];
+
+/**
+ * The next few "deadline" zmanim coming up from `now`, drawn from the curated
+ * KEY_ZMANIM set. Spans today *and* tomorrow so that late in the evening —
+ * once the day's own zmanim have all passed — the list rolls forward to the
+ * next morning's cutoffs instead of going empty. Returns them time-sorted and
+ * capped at `limit`, so the display always shows what's actually approaching.
+ */
+export function getUpcomingZmanim(
+  now: Date,
+  lat: number,
+  lon: number,
+  limit = 3
+): UpcomingZman[] {
+  const t = now.getTime();
+  const days = [
+    getZmanim(now, lat, lon),
+    getZmanim(new Date(t + DAY_MS), lat, lon),
+  ];
+
+  const events: UpcomingZman[] = [];
+  for (const z of days) {
+    for (const { key, label } of KEY_ZMANIM) {
+      const time = z[key];
+      if (time instanceof Date && time.getTime() > t) {
+        events.push({ label, time });
+      }
+    }
+  }
+
+  return events
+    .sort((a, b) => a.time.getTime() - b.time.getTime())
+    .slice(0, limit);
+}

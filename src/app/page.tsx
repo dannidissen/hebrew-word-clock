@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { convertTimeToHebrewWords, stripNiqqud } from "./hebrewTimeHelper";
 import { useLocation } from "./useLocation";
 import { useWeather } from "./useWeather";
-import { getCurrentZmanPeriod, getAutoThemeColor } from "./solarTimes";
+import { getCurrentZmanPeriod, getUpcomingZmanim, getAutoThemeColor } from "./solarTimes";
 import type { SpecialTimeEntry } from "./shabbatTimes";
 import type { WeatherIconKind, HourlyForecast } from "./useWeather";
 
@@ -621,6 +621,31 @@ export default function ClockPage() {
     return niqqudMode ? raw : stripNiqqud(raw);
   });
 
+  // 5b3. Upcoming "deadline" zmanim (latest Shema/Tefila, sunset, nightfall)
+  // as a short rolling list of the next few — the concrete times a religious
+  // user actually plans around, which the single period label above never
+  // surfaces on its own. Nearest one is emphasized in the render below.
+  const upcomingZmanim =
+    zmanimMode && time
+      ? getUpcomingZmanim(time, location.latitude, location.longitude, 3)
+      : [];
+  const nowDayStart = time
+    ? new Date(time.getFullYear(), time.getMonth(), time.getDate()).getTime()
+    : 0;
+  const zmanTimeLines = upcomingZmanim.map((z) => {
+    const timeLabel = fmtHM(z.time);
+    const zmanDayStart = new Date(
+      z.time.getFullYear(),
+      z.time.getMonth(),
+      z.time.getDate()
+    ).getTime();
+    const dayPrefix = zmanDayStart > nowDayStart ? "מָחָר" : null;
+    const raw = dayPrefix
+      ? `${dayPrefix} · ${z.label} · ${timeLabel}`
+      : `${z.label} · ${timeLabel}`;
+    return niqqudMode ? raw : stripNiqqud(raw);
+  });
+
   // 5c. "Auto" theme color, drifting with the sun's altitude
   const autoColor =
     colorTheme === "auto" && time
@@ -890,6 +915,32 @@ export default function ClockPage() {
         >
           {zmanLabel || " "}
         </p>
+
+        {/* Upcoming key zmanim (latest Shema/Tefila, sunset, nightfall) — a
+            short rolling list of the next deadlines, nearest one emphasized. */}
+        {zmanTimeLines.length > 0 && (
+          <div className="flex flex-col items-center gap-0.5">
+            {zmanTimeLines.map((line, i) => (
+              <p
+                key={i}
+                aria-live="polite"
+                className={`text-base sm:text-lg tracking-[0.15em] text-center select-none ${
+                  i === 0 ? "font-normal opacity-90" : "font-light opacity-55"
+                } ${
+                  einkMode
+                    ? "text-black"
+                    : `transition-[opacity,color] duration-700 ease-in-out ${getThemeTextClass()}`
+                }`}
+                style={{
+                  color: einkMode ? "#000000" : autoColorCss,
+                  fontFamily: FONT_FAMILY_VAR[fontChoice],
+                }}
+              >
+                {line}
+              </p>
+            ))}
+          </div>
+        )}
 
         {/* Upcoming Shabbat/Yom Tov/fast-day entry and exit times */}
         {specialTimeLines.length > 0 && (
