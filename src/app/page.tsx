@@ -15,6 +15,7 @@ import { useLocation } from "./useLocation";
 import { useWeather } from "./useWeather";
 import { getCurrentZmanPeriod, getUpcomingZmanim, getAutoThemeColor } from "./solarTimes";
 import type { SpecialTimeEntry } from "./shabbatTimes";
+import type { JewishCalendarInfo } from "./hebrewCalendar";
 import type { WeatherIconKind, HourlyForecast } from "./useWeather";
 
 type ColorTheme = "amber" | "stone" | "sunset" | "auto";
@@ -221,6 +222,31 @@ export default function ClockPage() {
       const { getUpcomingSpecialTimes } = await import("./shabbatTimes");
       if (cancelled) return;
       setSpecialTimes(getUpcomingSpecialTimes(new Date(), location.latitude, location.longitude));
+    };
+    update();
+    const interval = setInterval(update, 5 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [zmanimMode, location.latitude, location.longitude]);
+
+  // The day's Jewish-calendar context (Hebrew date, parasha, Daf Yomi, Omer),
+  // code-split like the Shabbat times and refreshed every few minutes (it only
+  // changes daily, or at nightfall). Cleared when the zmanim feature is off.
+  const [jewishCal, setJewishCal] = useState<JewishCalendarInfo | null>(null);
+  useEffect(() => {
+    if (!zmanimMode) {
+      setJewishCal(null);
+      return;
+    }
+    let cancelled = false;
+    const update = async () => {
+      const { getJewishCalendar } = await import("./hebrewCalendar");
+      if (cancelled) return;
+      setJewishCal(
+        getJewishCalendar(new Date(), location.latitude, location.longitude)
+      );
     };
     update();
     const interval = setInterval(update, 5 * 60 * 1000);
@@ -1033,6 +1059,32 @@ export default function ClockPage() {
     </div>
   ) : null;
 
+  const jewishCalNode = jewishCal ? (
+    <div className="flex flex-col items-center gap-1">
+      <p
+        className={`text-lg sm:text-xl font-normal tracking-[0.1em] text-center select-none ${
+          einkMode ? "text-black" : `${getThemeTextClass()} opacity-95`
+        }`}
+        style={textColorStyle}
+      >
+        {niqqudMode ? jewishCal.hebrewDate : stripNiqqud(jewishCal.hebrewDate)}
+      </p>
+      {[jewishCal.parsha, jewishCal.dafYomi, jewishCal.omer]
+        .filter((v): v is string => Boolean(v))
+        .map((line, i) => (
+          <p
+            key={i}
+            className={`text-sm sm:text-base font-light tracking-[0.12em] text-center opacity-70 select-none ${
+              einkMode ? "text-black" : getThemeTextClass()
+            }`}
+            style={textColorStyle}
+          >
+            {niqqudMode ? line : stripNiqqud(line)}
+          </p>
+        ))}
+    </div>
+  ) : null;
+
   return (
     <main
       className={`flex flex-col items-center justify-center min-h-screen w-full select-none relative overflow-hidden px-6 ${
@@ -1208,6 +1260,12 @@ export default function ClockPage() {
                 {zmanListNode}
               </div>
             )}
+            {jewishCalNode && (
+              <div className="flex flex-col items-center gap-2">
+                {columnHeader("הַיּוֹם")}
+                {jewishCalNode}
+              </div>
+            )}
             {specialListNode && (
               <div className="flex flex-col items-center gap-2">
                 {columnHeader("שַׁבָּת וְצוֹם")}
@@ -1224,10 +1282,11 @@ export default function ClockPage() {
           </>
         ) : (
           /* Portrait: the original single centered stack, unchanged. */
-          hasSideContent && (
+          (hasSideContent || jewishCalNode) && (
             <div className="flex flex-col gap-3 items-center w-full">
               {periodLabelNode}
               {zmanListNode}
+              {jewishCalNode}
               {specialListNode}
             </div>
           )
