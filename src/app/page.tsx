@@ -5,6 +5,11 @@ import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
 // useLayoutEffect warns during SSR/prerender; fall back to useEffect there.
 const useIsomorphicLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
+
+// Only count down to a Shabbat/fast moment once it's within this window; a
+// countdown of many hours to next week's Shabbat isn't useful, the static
+// time is. 24h covers "how long until the fast ends" and "until Shabbat".
+const COUNTDOWN_WINDOW_MS = 24 * 60 * 60 * 1000;
 import { convertTimeToHebrewWords, stripNiqqud } from "./hebrewTimeHelper";
 import { useLocation } from "./useLocation";
 import { useWeather } from "./useWeather";
@@ -186,6 +191,12 @@ export default function ClockPage() {
   const clockRef = useRef<HTMLHeadingElement>(null);
   const [fitScale, setFitScale] = useState(1);
 
+  // Live "now", ticked once a second, only while an upcoming Shabbat/fast
+  // moment is close enough to count down to (see the effect below). Kept
+  // separate from `time` so the normal clock still re-renders only when its
+  // phrase changes.
+  const [countdownNow, setCountdownNow] = useState<number>(0);
+
   // Only prompt for GPS when a feature that actually needs it is on.
   const wantsLocation = zmanimMode || weatherMode || colorTheme === "auto";
   const location = useLocation(wantsLocation);
@@ -218,6 +229,22 @@ export default function ClockPage() {
       clearInterval(interval);
     };
   }, [zmanimMode, location.latitude, location.longitude]);
+
+  // Live countdown ticker — runs a 1s interval only while the soonest upcoming
+  // Shabbat/Yom Tov/fast moment is within the display window, so a fasting or
+  // erev-Shabbat user sees the time tick down, without re-rendering every
+  // second the rest of the time. Skipped on e-ink (its slow refresh can't
+  // track a per-second value anyway).
+  useEffect(() => {
+    if (!zmanimMode || einkMode) return;
+    const soonest = specialTimes.find((e) => e.time.getTime() > Date.now());
+    if (!soonest || soonest.time.getTime() - Date.now() > COUNTDOWN_WINDOW_MS) {
+      return;
+    }
+    setCountdownNow(Date.now());
+    const id = setInterval(() => setCountdownNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [zmanimMode, einkMode, specialTimes]);
 
   // Wake Lock states
   const [wakeLock, setWakeLock] = useState<WakeLockSentinel | null>(null);
@@ -634,6 +661,42 @@ export default function ClockPage() {
     return niqqudMode ? raw : stripNiqqud(raw);
   });
 
+  // 5b2b. Live countdown to the soonest upcoming Shabbat/fast moment, shown
+  // prominently under the clock while it's within the window — "how long until
+  // the fast ends" / "until Shabbat comes in". Uses the per-second countdownNow
+  // (falling back to a plain Date for the very first render before the ticker
+  // starts). Durations are wall-clock spans, so the tz override doesn't apply.
+  const countdownRef = countdownNow || (time ? time.getTime() : 0);
+  const countdownTarget = zmanimMode
+    ? specialTimes.find((e) => e.time.getTime() > countdownRef)
+    : undefined;
+  const countdownRemainingMs = countdownTarget
+    ? countdownTarget.time.getTime() - countdownRef
+    : 0;
+  const showCountdown =
+    !einkMode &&
+    !!countdownTarget &&
+    countdownRemainingMs > 0 &&
+    countdownRemainingMs <= COUNTDOWN_WINDOW_MS;
+  const fmtCountdown = (ms: number): string => {
+    const total = Math.max(0, Math.floor(ms / 1000));
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    if (h >= 1) return `בְּעוֹד ${h}:${pad2(m)} שָׁעוֹת`;
+    if (m >= 1) return `בְּעוֹד ${m}:${pad2(s)} דַּקּוֹת`;
+    return `בְּעוֹד ${s} שְׁנִיּוֹת`;
+  };
+  const countdownLabelRaw =
+    showCountdown && countdownTarget
+      ? `${countdownTarget.label} · ${fmtCountdown(countdownRemainingMs)}`
+      : null;
+  const countdownLabel = countdownLabelRaw
+    ? niqqudMode
+      ? countdownLabelRaw
+      : stripNiqqud(countdownLabelRaw)
+    : null;
+
   // 5b3. Upcoming "deadline" zmanim (latest Shema/Tefila, sunset, nightfall)
   // as a short rolling list of the next few — the concrete times a religious
   // user actually plans around, which the single period label above never
@@ -854,6 +917,20 @@ export default function ClockPage() {
       {text}
     </p>
   );
+
+  const countdownNode = countdownLabel ? (
+    <p
+      aria-live="polite"
+      className={`text-xl sm:text-2xl md:text-3xl font-light tracking-[0.15em] text-center select-none ${
+        einkMode
+          ? "text-black"
+          : `transition-[color] duration-700 ease-in-out ${getThemeTextClass()} opacity-90`
+      }`}
+      style={textColorStyle}
+    >
+      {countdownLabel}
+    </p>
+  ) : null;
 
   const periodLabelNode = (
     <p
@@ -1104,6 +1181,10 @@ export default function ClockPage() {
             ))}
           </span>
         </h1>
+
+        {/* Live countdown to the next Shabbat/fast moment, directly under the
+            clock in both layouts when one is close. */}
+        {countdownNode}
 
         {dashboardLayout ? (
           /* Landscape: a thin divider seals off the clock, then the readouts
