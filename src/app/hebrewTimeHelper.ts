@@ -49,9 +49,6 @@ export const MINUTES_ROUNDED_ADDITIVE: Record<number, string> = {
   30: "וָחֵצִי",
   35: "וּשְׁלֹשִׁים וַחֲמִשָּׁה",
   40: "וְאַרְבָּעִים",
-  45: "וְאַרְבָּעִים וַחֲמִשָּׁה",
-  50: "וַחֲמִשִּׁים",
-  55: "וַחֲמִשִּׁים וַחֲמִשָּׁה",
 };
 
 // Rounded minutes subtraction prefix (Masculine)
@@ -252,14 +249,26 @@ export function convertTimeToHebrewWords(
       return `${getHourName(targetHour)} ${getPeriodOfDay(targetHour)}`;
     }
 
-    // Rounded (poetic) mode reads additively across the whole hour — the
-    // digital-style "two thirty-five" rather than switching to a subtractive
-    // "twenty-five to three" past the half hour. (MINUTES_ROUNDED_SUBTRACTIVE
-    // is kept exported for reference / a possible future toggle.)
-    const minPhrase = MINUTES_ROUNDED_ADDITIVE[roundedMinutes];
-    if (targetHour === 0) {
-      return `חֲצוֹת ${minPhrase}`;
+    // Additive (roundedMinutes < 45): read "hour + minutes" up to :40 ("two
+    // thirty-five", "two forty") instead of the clumsy "twenty-five/twenty to".
+    if (roundedMinutes < 45) {
+      const minPhrase = MINUTES_ROUNDED_ADDITIVE[roundedMinutes];
+      if (targetHour === 0) {
+        return `חֲצוֹת ${minPhrase}`;
+      }
+      return `${getHourName(targetHour)} ${minPhrase} ${getPeriodOfDay(targetHour)}`;
     }
-    return `${getHourName(targetHour)} ${minPhrase} ${getPeriodOfDay(targetHour)}`;
+
+    // Subtractive only for the compact closing stretch, where it reads
+    // naturally: :45 "רבע ל", :50 "עשרה ל", :55 "חמישה ל".
+    const diff = 60 - roundedMinutes;
+    const nextHour = (targetHour + 1) % 24;
+    const minPhrase = MINUTES_ROUNDED_SUBTRACTIVE[diff];
+    const hourPhrase = getPrepositionedHour(nextHour);
+
+    if (nextHour === 0) {
+      return `${minPhrase} ${hourPhrase}`;
+    }
+    return `${minPhrase} ${hourPhrase} ${getPeriodOfDay(nextHour)}`;
   }
 }
