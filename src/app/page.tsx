@@ -296,6 +296,26 @@ export default function ClockPage() {
     return () => clearTimeout(timeoutId);
   }, [preciseMode]);
 
+  // 1c. Snap the clock back to the real time whenever the page returns to the
+  // foreground. Some browsers — the Kindle's experimental browser especially —
+  // suspend a backgrounded/idle tab's JS timers, freezing the ticker on a stale
+  // time. Re-reading the clock on visibility/focus/pageshow means waking the
+  // device (or reloading) always shows the correct time immediately, instead of
+  // whatever moment the tab was paused at.
+  useEffect(() => {
+    const resync = () => {
+      if (document.visibilityState !== "hidden") setTime(new Date());
+    };
+    document.addEventListener("visibilitychange", resync);
+    window.addEventListener("focus", resync);
+    window.addEventListener("pageshow", resync);
+    return () => {
+      document.removeEventListener("visibilitychange", resync);
+      window.removeEventListener("focus", resync);
+      window.removeEventListener("pageshow", resync);
+    };
+  }, []);
+
   // 2. Wake Lock handlers
   const requestWakeLock = async () => {
     if (!("wakeLock" in navigator)) return;
