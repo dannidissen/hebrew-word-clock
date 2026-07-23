@@ -8,6 +8,7 @@ import {
   HOURS_HEBREW,
   HOURS_PREPOSITION_HEBREW,
   MINUTES_ROUNDED_ADDITIVE,
+  MINUTES_ROUNDED_SUBTRACTIVE,
   MINUTES_PRECISE_ADDITIVE,
 } from "./hebrewTimeHelper";
 
@@ -122,19 +123,29 @@ describe("convertTimeToHebrewWords - rounded (poetic) mode", () => {
     );
   });
 
-  it("uses additive phrasing past the half hour", () => {
-    // 10:50 -> ten fifty (additive), not "ten to eleven"
-    const result = convertTimeToHebrewWords(10, 50, false);
-    expect(result).toBe(
-      `${HOURS_HEBREW[10]} ${MINUTES_ROUNDED_ADDITIVE[50]} ${getPeriodOfDay(10)}`
+  it("reads :35 and :40 additively", () => {
+    // 14:35 -> "two thirty-five", not "twenty-five to three"
+    expect(convertTimeToHebrewWords(14, 35, false)).toBe(
+      `${getHourName(14)} ${MINUTES_ROUNDED_ADDITIVE[35]} ${getPeriodOfDay(14)}`
+    );
+    expect(convertTimeToHebrewWords(14, 40, false)).toBe(
+      `${getHourName(14)} ${MINUTES_ROUNDED_ADDITIVE[40]} ${getPeriodOfDay(14)}`
     );
   });
 
-  it("reads additively in the late-evening hour", () => {
-    // 23:50 -> eleven fifty at night (additive, no subtractive countdown)
+  it("keeps the compact subtractive phrasing from :45", () => {
+    // 10:50 -> "ten to eleven" (עשרה לאחת עשרה)
+    const result = convertTimeToHebrewWords(10, 50, false);
+    expect(result).toBe(
+      `${MINUTES_ROUNDED_SUBTRACTIVE[10]} ${getPrepositionedHour(11)} ${getPeriodOfDay(11)}`
+    );
+  });
+
+  it("drops the day-period when counting down to midnight", () => {
+    // 23:50 -> ten to midnight, no period suffix
     const result = convertTimeToHebrewWords(23, 50, false);
     expect(result).toBe(
-      `${getHourName(23)} ${MINUTES_ROUNDED_ADDITIVE[50]} ${getPeriodOfDay(23)}`
+      `${MINUTES_ROUNDED_SUBTRACTIVE[10]} ${getPrepositionedHour(0)}`
     );
   });
 });
