@@ -966,8 +966,19 @@ export default function ClockPage() {
         // Double-click the clock/background to toggle fullscreen (the usual
         // gesture for kiosk-style displays). Ignore double-clicks that land on
         // an actual control so the footer buttons keep their own behavior.
-        if (!fullscreenSupported) return;
         if ((e.target as HTMLElement).closest("button, a, input, [role='button']")) {
+          return;
+        }
+        // Gate on the request method actually existing, not on the
+        // `document.fullscreenEnabled` flag, which some browsers report false
+        // even when fullscreen works — toggleFullscreen handles the rest.
+        const docEl = document.documentElement as HTMLElement & {
+          webkitRequestFullscreen?: () => Promise<void>;
+        };
+        if (
+          typeof docEl.requestFullscreen !== "function" &&
+          typeof docEl.webkitRequestFullscreen !== "function"
+        ) {
           return;
         }
         toggleFullscreen();
