@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { convertTimeToHebrewWords, stripNiqqud } from "./hebrewTimeHelper";
 import { useLocation } from "./useLocation";
 import { useWeather } from "./useWeather";
-import { getCurrentZmanPeriod, getAutoThemeColor } from "./solarTimes";
+import { getCurrentZmanPeriod, getUpcomingZmanim, getAutoThemeColor } from "./solarTimes";
 import type { SpecialTimeEntry } from "./shabbatTimes";
 import type { WeatherIconKind, HourlyForecast } from "./useWeather";
 
@@ -621,6 +621,31 @@ export default function ClockPage() {
     return niqqudMode ? raw : stripNiqqud(raw);
   });
 
+  // 5b3. Upcoming "deadline" zmanim (latest Shema/Tefila, sunset, nightfall)
+  // as a short rolling list of the next few — the concrete times a religious
+  // user actually plans around, which the single period label above never
+  // surfaces on its own. Nearest one is emphasized in the render below.
+  const upcomingZmanim =
+    zmanimMode && time
+      ? getUpcomingZmanim(time, location.latitude, location.longitude, 3)
+      : [];
+  const nowDayStart = time
+    ? new Date(time.getFullYear(), time.getMonth(), time.getDate()).getTime()
+    : 0;
+  const zmanTimeLines = upcomingZmanim.map((z) => {
+    const timeLabel = fmtHM(z.time);
+    const zmanDayStart = new Date(
+      z.time.getFullYear(),
+      z.time.getMonth(),
+      z.time.getDate()
+    ).getTime();
+    const dayPrefix = zmanDayStart > nowDayStart ? "מָחָר" : null;
+    const raw = dayPrefix
+      ? `${dayPrefix} · ${z.label} · ${timeLabel}`
+      : `${z.label} · ${timeLabel}`;
+    return niqqudMode ? raw : stripNiqqud(raw);
+  });
+
   // 5c. "Auto" theme color, drifting with the sun's altitude
   const autoColor =
     colorTheme === "auto" && time
@@ -720,14 +745,28 @@ export default function ClockPage() {
       : phraseLength <= 26
         ? 13
         : 10.5;
+  // In landscape (tablet / secondary monitor) the clock stays the hero at the
+  // top, and the extra readouts — zmanim, Shabbat/fast times, weather — sit
+  // beneath it as side-by-side columns, using the wide screen instead of a
+  // tall stack that crowds it. Portrait keeps the original centered stack.
+  const hasSideContent = Boolean(
+    zmanLabel || zmanTimeLines.length > 0 || specialTimeLines.length > 0
+  );
+  const hasWeather = Boolean(weatherMode && weather);
+  const isLandscape = viewport.w > 0 && viewport.w / viewport.h >= 1.25;
+  const dashboardLayout =
+    isLandscape && viewport.w >= 700 && (hasSideContent || hasWeather);
+
+  // The hero clock uses the full width; cap its height a bit more tightly in
+  // the dashboard so the columns below it have room.
   const heightCap = einkMode ? 0.26 : 0.2;
+  // In the dashboard the clock shares the screen with the columns beneath it,
+  // so hold it a bit smaller than a full-bleed hero would be.
+  const clockPx = dashboardLayout
+    ? Math.min((vwFactor / 100) * viewport.w * 0.8, 0.28 * viewport.h, 168)
+    : Math.min((vwFactor / 100) * viewport.w, heightCap * viewport.h, 192);
   const clockFontSize = viewport.w
-    ? `${Math.round(
-        Math.max(
-          48,
-          Math.min((vwFactor / 100) * viewport.w, heightCap * viewport.h, 192)
-        )
-      )}px`
+    ? `${Math.round(Math.max(48, clockPx))}px`
     : `clamp(3rem, min(${vwFactor}vw, ${heightCap * 100}vh), 12rem)`;
 
   const getThemeButtonActive = () => {
@@ -756,6 +795,125 @@ export default function ClockPage() {
     `px-3.5 py-1.5 rounded-full text-[11px] font-medium tracking-wider transition-all duration-300 border ${
       active ? pillActiveClass : pillIdleClass
     } ${extra}`;
+
+  // Shared, center-aligned readout nodes, reused by both the portrait stack
+  // and the landscape dashboard columns so the two layouts can't drift apart.
+  const textColorStyle = {
+    color: einkMode ? "#000000" : autoColorCss,
+    fontFamily: FONT_FAMILY_VAR[fontChoice],
+  } as const;
+
+  const columnHeader = (text: string) => (
+    <p
+      className={`text-xs sm:text-sm font-medium tracking-[0.25em] select-none ${
+        einkMode ? "text-black opacity-50" : `${getThemeTextClass()} opacity-40`
+      }`}
+      style={{ color: einkMode ? "#000000" : autoColorCss, fontFamily: FONT_FAMILY_VAR[fontChoice] }}
+    >
+      {text}
+    </p>
+  );
+
+  const periodLabelNode = (
+    <p
+      aria-live="polite"
+      className={`text-lg sm:text-xl md:text-2xl font-light tracking-[0.2em] text-center select-none ${
+        einkMode
+          ? `text-black ${zmanLabel ? "opacity-100" : "opacity-0"}`
+          : `transition-[opacity,color] duration-700 ease-in-out ${getThemeTextClass()} ${
+              zmanLabel ? "opacity-70" : "opacity-0"
+            }`
+      }`}
+      style={textColorStyle}
+    >
+      {zmanLabel || " "}
+    </p>
+  );
+
+  const zmanListNode =
+    zmanTimeLines.length > 0 ? (
+      <div className="flex flex-col gap-0.5 items-center">
+        {zmanTimeLines.map((line, i) => (
+          <p
+            key={i}
+            aria-live="polite"
+            className={`text-base sm:text-lg tracking-[0.15em] text-center select-none ${
+              i === 0 ? "font-normal opacity-90" : "font-light opacity-55"
+            } ${
+              einkMode
+                ? "text-black"
+                : `transition-[opacity,color] duration-700 ease-in-out ${getThemeTextClass()}`
+            }`}
+            style={textColorStyle}
+          >
+            {line}
+          </p>
+        ))}
+      </div>
+    ) : null;
+
+  const specialListNode =
+    specialTimeLines.length > 0 ? (
+      <div className="flex flex-col gap-0.5 items-center">
+        {specialTimeLines.map((line, i) => (
+          <p
+            key={i}
+            aria-live="polite"
+            className={`text-sm sm:text-base font-light tracking-[0.15em] text-center opacity-60 select-none ${
+              einkMode
+                ? "text-black"
+                : `transition-[opacity,color] duration-700 ease-in-out ${getThemeTextClass()}`
+            }`}
+            style={textColorStyle}
+          >
+            {line}
+          </p>
+        ))}
+      </div>
+    ) : null;
+
+  const weatherReadoutNode = hasWeather ? (
+    <div className="flex flex-col items-center gap-1.5">
+      <div
+        className={`flex items-center gap-2 text-2xl sm:text-3xl font-light select-none ${
+          einkMode ? "text-black" : getThemeTextClass()
+        }`}
+        style={textColorStyle}
+      >
+        <WeatherIcon kind={weather!.icon} className="w-7 h-7 sm:w-8 sm:h-8 shrink-0" />
+        <span dir="ltr">{weather!.temperatureC}°</span>
+      </div>
+      <p
+        className={`text-sm sm:text-base font-light tracking-[0.12em] text-center opacity-70 select-none ${
+          einkMode ? "text-black" : getThemeTextClass()
+        }`}
+        style={textColorStyle}
+      >
+        {niqqudMode ? weather!.description : stripNiqqud(weather!.description)}
+      </p>
+      {weather!.hourly.length > 0 && (
+        <div
+          className={`flex items-start gap-3 sm:gap-4 select-none ${
+            einkMode ? "text-black" : getThemeTextClass()
+          }`}
+          style={{ color: einkMode ? "#000000" : autoColorCss }}
+        >
+          {forecastCheckpoints(weather!.hourly).map((hour) => (
+            <div
+              key={hour.time.getTime()}
+              className="flex flex-col items-center gap-0.5 text-xs sm:text-sm"
+            >
+              <span className="opacity-60" dir="ltr">
+                {fmtHM(hour.time)}
+              </span>
+              <WeatherIcon kind={hour.icon} className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span dir="ltr">{hour.temperatureC}°</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  ) : null;
 
   return (
     <main
@@ -789,8 +947,9 @@ export default function ClockPage() {
         </div>
       )}
 
-      {/* Weather corner readout */}
-      {weatherMode && weather && (
+      {/* Weather corner readout — hidden in the dashboard, where weather
+          becomes one of the bottom columns instead. */}
+      {weatherMode && weather && !dashboardLayout && (
         <div className="fixed top-4 right-4 sm:top-6 sm:right-6 z-10 flex flex-col gap-2 max-w-sm">
           {/* Current weather pill */}
           <div
@@ -839,7 +998,13 @@ export default function ClockPage() {
       )}
 
       {/* Visual Clock Screen Wrapper to Prevent Shift */}
-      <section className="flex flex-col items-center justify-center min-h-[45vh] w-full max-w-7xl gap-3">
+      <section
+        className={`flex flex-col items-center w-full max-w-7xl ${
+          dashboardLayout
+            ? "justify-center min-h-screen gap-6 lg:gap-10 pt-6 pb-24"
+            : "justify-center min-h-[45vh] gap-3"
+        }`}
+      >
         <h1
           role="timer"
           aria-live="polite"
@@ -873,45 +1038,38 @@ export default function ClockPage() {
           </span>
         </h1>
 
-        {/* Poetic zman label — appears only around dawn/sunrise/twilight/nightfall */}
-        <p
-          aria-live="polite"
-          className={`text-lg sm:text-xl md:text-2xl font-light tracking-[0.2em] text-center select-none ${
-            einkMode
-              ? `text-black ${zmanLabel ? "opacity-100" : "opacity-0"}`
-              : `transition-[opacity,color] duration-700 ease-in-out ${getThemeTextClass()} ${
-                  zmanLabel ? "opacity-70" : "opacity-0"
-                }`
-          }`}
-          style={{
-            color: einkMode ? "#000000" : autoColorCss,
-            fontFamily: FONT_FAMILY_VAR[fontChoice],
-          }}
-        >
-          {zmanLabel || " "}
-        </p>
-
-        {/* Upcoming Shabbat/Yom Tov/fast-day entry and exit times */}
-        {specialTimeLines.length > 0 && (
-          <div className="flex flex-col items-center gap-0.5">
-            {specialTimeLines.map((line, i) => (
-              <p
-                key={i}
-                aria-live="polite"
-                className={`text-sm sm:text-base font-light tracking-[0.15em] text-center opacity-60 select-none ${
-                  einkMode
-                    ? "text-black"
-                    : `transition-[opacity,color] duration-700 ease-in-out ${getThemeTextClass()}`
-                }`}
-                style={{
-                  color: einkMode ? "#000000" : autoColorCss,
-                  fontFamily: FONT_FAMILY_VAR[fontChoice],
-                }}
-              >
-                {line}
-              </p>
-            ))}
+        {dashboardLayout ? (
+          /* Landscape: the readouts sit below the clock as titled columns. */
+          <div className="flex flex-row flex-wrap justify-center items-start gap-x-12 lg:gap-x-20 gap-y-6 w-full">
+            {(zmanLabel || zmanTimeLines.length > 0) && (
+              <div className="flex flex-col items-center gap-2">
+                {columnHeader("זְמַנֵּי הַיּוֹם")}
+                {periodLabelNode}
+                {zmanListNode}
+              </div>
+            )}
+            {specialListNode && (
+              <div className="flex flex-col items-center gap-2">
+                {columnHeader("שַׁבָּת וְצוֹם")}
+                {specialListNode}
+              </div>
+            )}
+            {weatherReadoutNode && (
+              <div className="flex flex-col items-center gap-2">
+                {columnHeader("מֶזֶג אֲוִיר")}
+                {weatherReadoutNode}
+              </div>
+            )}
           </div>
+        ) : (
+          /* Portrait: the original single centered stack, unchanged. */
+          hasSideContent && (
+            <div className="flex flex-col gap-3 items-center w-full">
+              {periodLabelNode}
+              {zmanListNode}
+              {specialListNode}
+            </div>
+          )
         )}
       </section>
 
