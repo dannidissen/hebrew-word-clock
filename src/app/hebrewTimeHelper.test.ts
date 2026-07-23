@@ -8,7 +8,6 @@ import {
   HOURS_HEBREW,
   HOURS_PREPOSITION_HEBREW,
   MINUTES_ROUNDED_ADDITIVE,
-  MINUTES_ROUNDED_SUBTRACTIVE,
   MINUTES_PRECISE_ADDITIVE,
 } from "./hebrewTimeHelper";
 
@@ -123,19 +122,19 @@ describe("convertTimeToHebrewWords - rounded (poetic) mode", () => {
     );
   });
 
-  it("uses subtractive phrasing past the half hour", () => {
-    // 10:50 -> ten to eleven
+  it("uses additive phrasing past the half hour", () => {
+    // 10:50 -> ten fifty (additive), not "ten to eleven"
     const result = convertTimeToHebrewWords(10, 50, false);
     expect(result).toBe(
-      `${MINUTES_ROUNDED_SUBTRACTIVE[10]} ${getPrepositionedHour(11)} ${getPeriodOfDay(11)}`
+      `${HOURS_HEBREW[10]} ${MINUTES_ROUNDED_ADDITIVE[50]} ${getPeriodOfDay(10)}`
     );
   });
 
-  it("drops the day-period when counting down to midnight", () => {
-    // 23:50 -> ten to midnight, no period suffix
+  it("reads additively in the late-evening hour", () => {
+    // 23:50 -> eleven fifty at night (additive, no subtractive countdown)
     const result = convertTimeToHebrewWords(23, 50, false);
     expect(result).toBe(
-      `${MINUTES_ROUNDED_SUBTRACTIVE[10]} ${getPrepositionedHour(0)}`
+      `${getHourName(23)} ${MINUTES_ROUNDED_ADDITIVE[50]} ${getPeriodOfDay(23)}`
     );
   });
 });

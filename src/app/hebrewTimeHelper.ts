@@ -47,6 +47,11 @@ export const MINUTES_ROUNDED_ADDITIVE: Record<number, string> = {
   20: "וְעֶשְׂרִים",
   25: "וְעֶשְׂרִים וַחֲמִשָּׁה",
   30: "וָחֵצִי",
+  35: "וּשְׁלֹשִׁים וַחֲמִשָּׁה",
+  40: "וְאַרְבָּעִים",
+  45: "וְאַרְבָּעִים וַחֲמִשָּׁה",
+  50: "וַחֲמִשִּׁים",
+  55: "וַחֲמִשִּׁים וַחֲמִשָּׁה",
 };
 
 // Rounded minutes subtraction prefix (Masculine)
@@ -247,26 +252,14 @@ export function convertTimeToHebrewWords(
       return `${getHourName(targetHour)} ${getPeriodOfDay(targetHour)}`;
     }
 
-    // Additive (roundedMinutes < 35): past that point "half past and five
-    // more" reads as clumsy Hebrew, so switch to the subtractive ("25
-    // minutes to X") phrasing a half-step earlier than precise mode does.
-    if (roundedMinutes < 35) {
-      const minPhrase = MINUTES_ROUNDED_ADDITIVE[roundedMinutes];
-      if (targetHour === 0) {
-        return `חֲצוֹת ${minPhrase}`;
-      }
-      return `${getHourName(targetHour)} ${minPhrase} ${getPeriodOfDay(targetHour)}`;
+    // Rounded (poetic) mode reads additively across the whole hour — the
+    // digital-style "two thirty-five" rather than switching to a subtractive
+    // "twenty-five to three" past the half hour. (MINUTES_ROUNDED_SUBTRACTIVE
+    // is kept exported for reference / a possible future toggle.)
+    const minPhrase = MINUTES_ROUNDED_ADDITIVE[roundedMinutes];
+    if (targetHour === 0) {
+      return `חֲצוֹת ${minPhrase}`;
     }
-
-    // Subtractive (roundedMinutes >= 35)
-    const diff = 60 - roundedMinutes;
-    const nextHour = (targetHour + 1) % 24;
-    const minPhrase = MINUTES_ROUNDED_SUBTRACTIVE[diff];
-    const hourPhrase = getPrepositionedHour(nextHour);
-
-    if (nextHour === 0) {
-      return `${minPhrase} ${hourPhrase}`;
-    }
-    return `${minPhrase} ${hourPhrase} ${getPeriodOfDay(nextHour)}`;
+    return `${getHourName(targetHour)} ${minPhrase} ${getPeriodOfDay(targetHour)}`;
   }
 }

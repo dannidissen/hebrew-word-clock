@@ -773,7 +773,7 @@ export default function ClockPage() {
   // In the dashboard the clock shares the screen with the columns beneath it,
   // so hold it a bit smaller than a full-bleed hero would be.
   const clockPx = dashboardLayout
-    ? Math.min((vwFactor / 100) * viewport.w * 0.8, 0.28 * viewport.h, 168)
+    ? Math.min((vwFactor / 100) * viewport.w * 0.95, 0.32 * viewport.h, 220)
     : Math.min((vwFactor / 100) * viewport.w, heightCap * viewport.h, 192);
   const clockBasePx = Math.max(48, clockPx);
   const clockFontSize = viewport.w
@@ -790,7 +790,9 @@ export default function ClockPage() {
       if (fitScale !== 1) setFitScale(1);
       return;
     }
-    const avail = (el.parentElement?.clientWidth ?? viewport.w) - 8;
+    // Fit against ~94% of the whole screen width, not the (narrower) column
+    // container, so the hero clock can grow much larger than the max-w band.
+    const avail = (viewport.w || el.parentElement?.clientWidth || 0) * 0.94;
     if (avail <= 0) return;
     const naturalAtBase = el.scrollWidth / (fitScale || 1);
     const desired = Math.min(1, avail / naturalAtBase);
@@ -1035,10 +1037,10 @@ export default function ClockPage() {
 
       {/* Visual Clock Screen Wrapper to Prevent Shift */}
       <section
-        className={`flex flex-col items-center w-full max-w-7xl ${
+        className={`flex flex-col items-center w-full ${
           dashboardLayout
             ? "justify-center min-h-screen gap-6 lg:gap-10 pt-6 pb-24"
-            : "justify-center min-h-[45vh] gap-3"
+            : "max-w-7xl justify-center min-h-[45vh] gap-3"
         }`}
       >
         <h1
@@ -1093,7 +1095,7 @@ export default function ClockPage() {
                 opacity: einkMode ? 0.28 : 0.16,
               }}
             />
-            <div className="flex flex-row flex-wrap justify-center items-start gap-x-12 lg:gap-x-20 gap-y-6 w-full">
+            <div className="flex flex-row flex-wrap justify-center items-start gap-x-12 lg:gap-x-20 gap-y-6 w-full max-w-7xl mx-auto">
             {(zmanLabel || zmanTimeLines.length > 0) && (
               <div className="flex flex-col items-center gap-2">
                 {columnHeader("זְמַנֵּי הַיּוֹם")}
