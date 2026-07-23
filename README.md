@@ -14,6 +14,10 @@ bedside / desk clock.
   exact *precise* mode (to the minute, with feminine "דַּקּוֹת" agreement).
 - **Niqqud toggle** — show or hide vowel points.
 - **Three warm themes** — amber / stone / sunset.
+- **e-ink / Kindle mode** — a black-on-white, animation-free rendering for
+  reflective e-ink browsers (Kindle & friends), where the warm dark themes ghost
+  and wash out. Toggle it from the footer, force it with the `?eink=1` URL param
+  (ideal for a bookmarked kiosk), or let it auto-enable on Kindle-class devices.
 - **Screen Wake Lock** — optional, keeps the display awake for kiosk use, and
   re-acquires the lock when the tab becomes visible again.
 - **Auto-hiding UI** — controls fade away (and the cursor hides) after 5s idle.

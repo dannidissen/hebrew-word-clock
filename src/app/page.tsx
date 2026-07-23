@@ -149,6 +149,13 @@ export default function ClockPage() {
   const [weatherMode, setWeatherMode] = useState<boolean>(false);
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
 
+  // e-ink / Kindle mode: white background, black text, no animations, no glow.
+  // e-ink panels are reflective and refresh slowly — the warm dark themes ghost
+  // badly and wash out on them, so this flips to pure black-on-white and strips
+  // every transition/shadow. Activated by a `?eink=1` URL param, a stored
+  // preference, or auto-detected Kindle-class user agents (see mount effect).
+  const [einkMode, setEinkMode] = useState<boolean>(false);
+
   // Only prompt for GPS when a feature that actually needs it is on.
   const wantsLocation = zmanimMode || weatherMode || colorTheme === "auto";
   const location = useLocation(wantsLocation);
@@ -234,7 +241,30 @@ export default function ClockPage() {
 
     const storedWeather = localStorage.getItem("weatherMode");
     if (storedWeather !== null) setWeatherMode(storedWeather === "true");
+
+    // e-ink mode resolution, in priority order:
+    //   1. explicit ?eink=1 / ?eink=0 URL param (best for a bookmarked kiosk),
+    //   2. a previously stored toggle,
+    //   3. auto-detect Kindle-class e-readers by user agent.
+    // Silk is excluded on purpose — it also ships on colour Fire tablets.
+    const einkParam = new URLSearchParams(window.location.search).get("eink");
+    const storedEink = localStorage.getItem("einkMode");
+    if (einkParam !== null) {
+      setEinkMode(einkParam === "1" || einkParam === "true");
+    } else if (storedEink !== null) {
+      setEinkMode(storedEink === "true");
+    } else if (/Kindle|Kobo|reMarkable|EBRD/i.test(navigator.userAgent || "")) {
+      setEinkMode(true);
+    }
   }, []);
+
+  // Paint the document background to match, so any overscroll edge or pre-hydration
+  // flash on the e-reader is white rather than the default black.
+  useEffect(() => {
+    const bg = einkMode ? "#ffffff" : "#000000";
+    document.documentElement.style.backgroundColor = bg;
+    document.body.style.backgroundColor = bg;
+  }, [einkMode]);
 
   // 1b. Clock ticker.
   // Instead of a blind 1s interval (which re-renders 60x/min even though the
@@ -436,6 +466,14 @@ export default function ClockPage() {
     });
   };
 
+  const handleEinkToggle = () => {
+    setEinkMode((prev) => {
+      const next = !prev;
+      localStorage.setItem("einkMode", String(next));
+      return next;
+    });
+  };
+
   // 5. Compute correct Hebrew phrasing
   const targetText = time
     ? convertTimeToHebrewWords(
@@ -494,8 +532,11 @@ export default function ClockPage() {
   // 6. Smooth transition handling
   useEffect(() => {
     if (!processedText) return;
-    if (displayedText === "") {
+    // In e-ink mode (or on first paint) swap the phrase in immediately — a
+    // cross-fade on a slow e-ink panel is just a smeary flicker, not a fade.
+    if (einkMode || displayedText === "") {
       setDisplayedText(processedText);
+      setIsFading(false);
       return;
     }
     if (displayedText !== processedText) {
@@ -506,7 +547,7 @@ export default function ClockPage() {
       }, 600); // Matches the duration of the transition opacity
       return () => clearTimeout(timer);
     }
-  }, [processedText, displayedText]);
+  }, [processedText, displayedText, einkMode]);
 
   // 7. Styling mappings based on theme state
   const getThemeTextClass = () => {
@@ -561,14 +602,24 @@ export default function ClockPage() {
     }
   };
 
+  // Footer pill styling. On e-ink the warm theme tints and faint neutral greys
+  // vanish into the white, so fall back to plain high-contrast black there.
+  const pillActiveClass = einkMode
+    ? "border-black text-black font-semibold"
+    : getThemeButtonActive();
+  const pillIdleClass = einkMode
+    ? "border-black/25 text-neutral-700"
+    : "border-transparent text-neutral-500 hover:text-neutral-300";
   const pillClass = (active: boolean, extra = "") =>
     `px-3.5 py-1.5 rounded-full text-[11px] font-medium tracking-wider transition-all duration-300 border ${
-      active ? getThemeButtonActive() : "border-transparent text-neutral-500 hover:text-neutral-300"
+      active ? pillActiveClass : pillIdleClass
     } ${extra}`;
 
   return (
     <main
-      className="flex flex-col items-center justify-center min-h-screen w-full bg-black select-none relative overflow-hidden transition-colors duration-1000 px-6"
+      className={`flex flex-col items-center justify-center min-h-screen w-full select-none relative overflow-hidden px-6 ${
+        einkMode ? "bg-white" : "bg-black transition-colors duration-1000"
+      }`}
       style={{ cursor: isIdle ? "none" : "default" }}
     >
       {/* Weather corner readout */}
@@ -576,8 +627,12 @@ export default function ClockPage() {
         <div className="fixed top-4 right-4 sm:top-6 sm:right-6 z-10 flex flex-col gap-2 max-w-sm">
           {/* Current weather pill */}
           <div
-            className={`flex items-center gap-2 rounded-full border border-neutral-900/60 bg-neutral-950/40 backdrop-blur-md px-3.5 py-2 sm:px-4 sm:py-2.5 text-sm sm:text-base font-medium tracking-wide select-none transition-opacity duration-700 ${getThemeTextClass()} ${
-              isIdle ? "opacity-50" : "opacity-95"
+            className={`flex items-center gap-2 rounded-full px-3.5 py-2 sm:px-4 sm:py-2.5 text-sm sm:text-base font-medium tracking-wide select-none ${
+              einkMode
+                ? `border border-black/30 bg-white text-black ${isIdle ? "opacity-70" : "opacity-100"}`
+                : `border border-neutral-900/60 bg-neutral-950/40 backdrop-blur-md transition-opacity duration-700 ${getThemeTextClass()} ${
+                    isIdle ? "opacity-50" : "opacity-95"
+                  }`
             }`}
           >
             <WeatherIcon kind={weather.icon} className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
@@ -591,8 +646,12 @@ export default function ClockPage() {
           {/* Minimal forecast summary — a few checkpoints, not a full scroll */}
           {weather.hourly.length > 0 && (
             <div
-              className={`flex items-center justify-center gap-3 sm:gap-4 rounded-full border border-neutral-900/60 bg-neutral-950/40 backdrop-blur-md px-3.5 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm select-none transition-opacity duration-700 ${getThemeTextClass()} ${
-                isIdle ? "opacity-40" : "opacity-80"
+              className={`flex items-center justify-center gap-3 sm:gap-4 rounded-full px-3.5 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm select-none ${
+                einkMode
+                  ? `border border-black/30 bg-white text-black ${isIdle ? "opacity-70" : "opacity-100"}`
+                  : `border border-neutral-900/60 bg-neutral-950/40 backdrop-blur-md transition-opacity duration-700 ${getThemeTextClass()} ${
+                      isIdle ? "opacity-40" : "opacity-80"
+                    }`
               }`}
             >
               {forecastCheckpoints(weather.hourly).map((hour) => (
@@ -625,23 +684,27 @@ export default function ClockPage() {
           aria-live="polite"
           aria-atomic="true"
           aria-label={displayedText ? stripNiqqud(displayedText) : "טוען"}
-          className={`leading-[1.45] font-medium tracking-wide text-center transition-[opacity,color] ease-in-out select-none ${
-            displayedText ? getThemeTextClass() : "text-neutral-600"
-          } ${isFading ? "opacity-0" : "opacity-100"}`}
+          className={`leading-[1.45] font-medium tracking-wide text-center select-none ${
+            einkMode
+              ? "text-black"
+              : `transition-[opacity,color] ease-in-out ${
+                  displayedText ? getThemeTextClass() : "text-neutral-600"
+                } ${isFading ? "opacity-0" : "opacity-100"}`
+          }`}
           style={{
             fontSize: clockFontSize,
             fontFamily: FONT_FAMILY_VAR[fontChoice],
-            color: displayedText ? autoColorCss : undefined,
-            textShadow: displayedText ? getThemeTextShadow() : "none",
-            transitionDuration: "500ms, 3000ms",
+            color: einkMode ? "#000000" : displayedText ? autoColorCss : undefined,
+            textShadow: einkMode ? "none" : displayedText ? getThemeTextShadow() : "none",
+            ...(einkMode ? {} : { transitionDuration: "500ms, 3000ms" }),
           }}
         >
           <span className="flex flex-wrap items-baseline justify-center gap-x-[0.3em] gap-y-2">
             {(displayedText || "טוען...").split(" ").map((word, i) => (
               <span
                 key={`${displayedText}-${i}`}
-                className="inline-block animate-word-in"
-                style={{ animationDelay: `${i * 70}ms` }}
+                className={einkMode ? "inline-block" : "inline-block animate-word-in"}
+                style={einkMode ? undefined : { animationDelay: `${i * 70}ms` }}
               >
                 {word}
               </span>
@@ -652,10 +715,17 @@ export default function ClockPage() {
         {/* Poetic zman label — appears only around dawn/sunrise/twilight/nightfall */}
         <p
           aria-live="polite"
-          className={`text-lg sm:text-xl md:text-2xl font-light tracking-[0.2em] text-center transition-[opacity,color] duration-700 ease-in-out select-none ${getThemeTextClass()} ${
-            zmanLabel ? "opacity-70" : "opacity-0"
+          className={`text-lg sm:text-xl md:text-2xl font-light tracking-[0.2em] text-center select-none ${
+            einkMode
+              ? `text-black ${zmanLabel ? "opacity-100" : "opacity-0"}`
+              : `transition-[opacity,color] duration-700 ease-in-out ${getThemeTextClass()} ${
+                  zmanLabel ? "opacity-70" : "opacity-0"
+                }`
           }`}
-          style={{ color: autoColorCss, fontFamily: FONT_FAMILY_VAR[fontChoice] }}
+          style={{
+            color: einkMode ? "#000000" : autoColorCss,
+            fontFamily: FONT_FAMILY_VAR[fontChoice],
+          }}
         >
           {zmanLabel || " "}
         </p>
@@ -667,8 +737,15 @@ export default function ClockPage() {
               <p
                 key={i}
                 aria-live="polite"
-                className={`text-sm sm:text-base font-light tracking-[0.15em] text-center opacity-60 transition-[opacity,color] duration-700 ease-in-out select-none ${getThemeTextClass()}`}
-                style={{ color: autoColorCss, fontFamily: FONT_FAMILY_VAR[fontChoice] }}
+                className={`text-sm sm:text-base font-light tracking-[0.15em] text-center opacity-60 select-none ${
+                  einkMode
+                    ? "text-black"
+                    : `transition-[opacity,color] duration-700 ease-in-out ${getThemeTextClass()}`
+                }`}
+                style={{
+                  color: einkMode ? "#000000" : autoColorCss,
+                  fontFamily: FONT_FAMILY_VAR[fontChoice],
+                }}
               >
                 {line}
               </p>
@@ -685,10 +762,20 @@ export default function ClockPage() {
         }`}
       >
         {settingsOpen && (
-          <div className="animate-panel-in flex flex-col gap-4 w-full max-w-xs sm:max-w-sm bg-neutral-950/60 backdrop-blur-md border border-neutral-800/60 p-4 rounded-[28px] shadow-2xl shadow-black/50">
+          <div
+            className={`animate-panel-in flex flex-col gap-4 w-full max-w-xs sm:max-w-sm p-4 rounded-[28px] ${
+              einkMode
+                ? "bg-white border border-black/30"
+                : "bg-neutral-950/60 backdrop-blur-md border border-neutral-800/60 shadow-2xl shadow-black/50"
+            }`}
+          >
             {/* תצוגה: how the clock itself reads */}
             <div className="flex flex-col gap-2">
-              <span className="text-[9px] font-medium tracking-widest text-neutral-600 px-1">
+              <span
+                className={`text-[9px] font-medium tracking-widest px-1 ${
+                  einkMode ? "text-neutral-700" : "text-neutral-600"
+                }`}
+              >
                 תצוגה
               </span>
               <div className="flex flex-wrap gap-1.5">
@@ -707,13 +794,25 @@ export default function ClockPage() {
               </div>
             </div>
 
-            {/* מסך: device/screen behavior */}
-            {(wakeLockSupported || fullscreenSupported) && (
-              <div className="flex flex-col gap-2 pt-3.5 border-t border-neutral-800/60">
-                <span className="text-[9px] font-medium tracking-widest text-neutral-600 px-1">
+            {/* מסך: device/screen behavior. Always rendered — it holds the
+                e-ink toggle, which must stay reachable even where wake-lock and
+                fullscreen are unavailable (e.g. the Kindle browser). */}
+            <div
+              className={`flex flex-col gap-2 pt-3.5 border-t ${
+                einkMode ? "border-black/15" : "border-neutral-800/60"
+              }`}
+            >
+                <span
+                  className={`text-[9px] font-medium tracking-widest px-1 ${
+                    einkMode ? "text-neutral-700" : "text-neutral-600"
+                  }`}
+                >
                   מסך
                 </span>
                 <div className="flex flex-wrap gap-1.5">
+                  <button onClick={handleEinkToggle} className={pillClass(einkMode)}>
+                    {einkMode ? "מסך: e-ink" : "מסך: רגיל"}
+                  </button>
                   {wakeLockSupported && (
                     <button
                       onClick={toggleWakeLock}
@@ -737,10 +836,10 @@ export default function ClockPage() {
                     </button>
                   )}
                 </div>
-              </div>
-            )}
+            </div>
 
-            {/* צבע: color theme */}
+            {/* צבע: color theme — meaningless on a monochrome e-ink panel */}
+            {!einkMode && (
             <div className="flex flex-col gap-2 pt-3.5 border-t border-neutral-800/60">
               <span className="text-[9px] font-medium tracking-widest text-neutral-600 px-1">
                 צבע
@@ -788,10 +887,19 @@ export default function ClockPage() {
                 />
               </div>
             </div>
+            )}
 
             {/* גופן: clock typeface */}
-            <div className="flex flex-col gap-2 pt-3.5 border-t border-neutral-800/60">
-              <span className="text-[9px] font-medium tracking-widest text-neutral-600 px-1">
+            <div
+              className={`flex flex-col gap-2 pt-3.5 border-t ${
+                einkMode ? "border-black/15" : "border-neutral-800/60"
+              }`}
+            >
+              <span
+                className={`text-[9px] font-medium tracking-widest px-1 ${
+                  einkMode ? "text-neutral-700" : "text-neutral-600"
+                }`}
+              >
                 גופן
               </span>
               <div className="flex flex-wrap items-center gap-2 px-1">
@@ -813,8 +921,12 @@ export default function ClockPage() {
                     style={{ fontFamily: FONT_FAMILY_VAR[key] }}
                     className={`w-9 h-9 rounded-2xl text-lg flex items-center justify-center border transition-all duration-300 ${
                       fontChoice === key
-                        ? `${getThemeButtonActive()} bg-white/5`
-                        : "border-transparent text-neutral-500 hover:text-neutral-300 hover:bg-white/5"
+                        ? einkMode
+                          ? "border-black text-black font-semibold"
+                          : `${getThemeButtonActive()} bg-white/5`
+                        : einkMode
+                          ? "border-black/25 text-neutral-700"
+                          : "border-transparent text-neutral-500 hover:text-neutral-300 hover:bg-white/5"
                     }`}
                   >
                     אב
@@ -823,7 +935,11 @@ export default function ClockPage() {
               </div>
               {/* Required credit for the Yiddishkeit font's free web-embedding license */}
               {fontChoice === "yiddishkeit" && (
-                <p className="text-[9px] font-light text-neutral-600 px-1">
+                <p
+                  className={`text-[9px] font-light px-1 ${
+                    einkMode ? "text-neutral-700" : "text-neutral-600"
+                  }`}
+                >
                   גופן &quot;יידישקייט&quot; באדיבות{" "}
                   <a
                     href="https://alefalefalef.co.il"
@@ -844,10 +960,16 @@ export default function ClockPage() {
           onClick={() => setSettingsOpen((v) => !v)}
           aria-label={settingsOpen ? "סגור הגדרות" : "פתח הגדרות"}
           aria-expanded={settingsOpen}
-          className={`w-11 h-11 rounded-full flex items-center justify-center bg-neutral-950/50 backdrop-blur-md border shadow-2xl transition-all duration-300 ${
-            settingsOpen
-              ? getThemeButtonActive()
-              : "border-neutral-900/60 text-neutral-400 hover:text-neutral-200"
+          className={`w-11 h-11 rounded-full flex items-center justify-center border transition-all duration-300 ${
+            einkMode
+              ? settingsOpen
+                ? "bg-white border-black text-black"
+                : "bg-white border-black/30 text-neutral-700"
+              : `bg-neutral-950/50 backdrop-blur-md shadow-2xl ${
+                  settingsOpen
+                    ? getThemeButtonActive()
+                    : "border-neutral-900/60 text-neutral-400 hover:text-neutral-200"
+                }`
           }`}
         >
           <SettingsIcon className="w-5 h-5" />
@@ -855,8 +977,14 @@ export default function ClockPage() {
 
         {/* Small wake-lock fallback guidance note */}
         {!wakeLockActive && (
-          <p className="text-[10px] font-light text-neutral-600 text-center tracking-wide">
-            להפעלה קבועה, מומלץ לבטל את כיבוי המסך האוטומטי בהגדרות המכשיר.
+          <p
+            className={`text-[10px] font-light text-center tracking-wide ${
+              einkMode ? "text-neutral-700" : "text-neutral-600"
+            }`}
+          >
+            {einkMode
+              ? "בקינדל: בטל/י את כיבוי המסך האוטומטי (הגדרות ← מסך/שינה) כדי שהשעון יישאר דלוק."
+              : "להפעלה קבועה, מומלץ לבטל את כיבוי המסך האוטומטי בהגדרות המכשיר."}
           </p>
         )}
 
