@@ -520,6 +520,9 @@ export default function ClockPage() {
       }
       idleTimeoutRef.current = setTimeout(() => {
         setIsIdle(true);
+        // Also collapse the pulled-out settings menu when left untouched, so it
+        // doesn't linger open over the clock.
+        setSettingsOpen(false);
       }, 5000); // 5 seconds of absolute silence to hide UI controls
     };
 
@@ -959,6 +962,16 @@ export default function ClockPage() {
         einkMode ? "bg-white" : "bg-black transition-colors duration-1000"
       }`}
       style={{ cursor: isIdle ? "none" : "default" }}
+      onDoubleClick={(e) => {
+        // Double-click the clock/background to toggle fullscreen (the usual
+        // gesture for kiosk-style displays). Ignore double-clicks that land on
+        // an actual control so the footer buttons keep their own behavior.
+        if (!fullscreenSupported) return;
+        if ((e.target as HTMLElement).closest("button, a, input, [role='button']")) {
+          return;
+        }
+        toggleFullscreen();
+      }}
     >
       {/* Diagnostic overlay (?debug=1 only) — reports the browser's real clock */}
       {debugMode && (
