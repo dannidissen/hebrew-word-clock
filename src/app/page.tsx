@@ -156,6 +156,20 @@ export default function ClockPage() {
   // preference, or auto-detected Kindle-class user agents (see mount effect).
   const [einkMode, setEinkMode] = useState<boolean>(false);
 
+  // Diagnostic overlay, enabled with ?debug=1. Prints what the browser's clock
+  // actually reports — used to tell apart a frozen ticker, a wrong device clock,
+  // and a browser whose JS timezone disagrees with the device (as some e-reader
+  // browsers do). Off by default; never shown without the explicit param.
+  const [debugMode, setDebugMode] = useState<boolean>(false);
+
+  // Optional timezone override (?tz=…), persisted. Needed for browsers whose JS
+  // clock reports the wrong local time even though the device's own clock is
+  // correct — notably the Kindle, whose experimental browser was observed a
+  // clean two hours behind Israel time. Accepts an IANA zone ("Asia/Jerusalem",
+  // DST-aware via Intl) or a plain UTC offset in hours ("3", "-5"). Empty =
+  // trust the browser's local time, as before.
+  const [tzOverride, setTzOverride] = useState<string>("");
+
   // Live viewport size, so the clock font can be sized in plain pixels from JS.
   // We deliberately avoid CSS clamp()/min() for the font size: the Kindle's
   // experimental browser runs an older WebKit that doesn't support them and
@@ -262,6 +276,19 @@ export default function ClockPage() {
     } else if (/Kindle|Kobo|reMarkable|EBRD/i.test(navigator.userAgent || "")) {
       setEinkMode(true);
     }
+
+    const debugParam = new URLSearchParams(window.location.search).get("debug");
+    if (debugParam === "1" || debugParam === "true") setDebugMode(true);
+
+    // Timezone override: ?tz=… wins and is remembered; otherwise reuse a stored one.
+    const tzParam = new URLSearchParams(window.location.search).get("tz");
+    if (tzParam !== null) {
+      localStorage.setItem("tzOverride", tzParam);
+      setTzOverride(tzParam);
+    } else {
+      const storedTz = localStorage.getItem("tzOverride");
+      if (storedTz) setTzOverride(storedTz);
+    }
   }, []);
 
   // Paint the document background to match, so any overscroll edge or pre-hydration
@@ -271,6 +298,51 @@ export default function ClockPage() {
     document.documentElement.style.backgroundColor = bg;
     document.body.style.backgroundColor = bg;
   }, [einkMode]);
+
+  // Resolve the timezone override into either an IANA zone (DST-aware) or a
+  // fixed minute offset from UTC. `wallParts` then converts any epoch into the
+  // wall-clock hour/minute/second the clock should show, and `fmtHM` formats a
+  // Date's time — both bypassing the browser's (possibly wrong) local zone.
+  // Solar/zmanim maths keep using the real Date, since sun position depends on
+  // the true UTC instant, not on which wall clock we display it in.
+  const tzZone = tzOverride.includes("/") ? tzOverride : null;
+  const tzOffsetMin = (() => {
+    if (!tzOverride || tzZone) return null;
+    const n = parseFloat(tzOverride);
+    if (isNaN(n)) return null;
+    return Math.abs(n) <= 14 ? Math.round(n * 60) : Math.round(n); // hours, or raw minutes
+  })();
+  const pad2 = (n: number) => String(n).padStart(2, "0");
+  const wallParts = (epochMs: number) => {
+    if (tzOffsetMin != null) {
+      const d = new Date(epochMs + tzOffsetMin * 60000);
+      return { h: d.getUTCHours(), m: d.getUTCMinutes(), s: d.getUTCSeconds() };
+    }
+    if (tzZone) {
+      try {
+        const parts = new Intl.DateTimeFormat("en-GB", {
+          timeZone: tzZone,
+          hour12: false,
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        }).formatToParts(new Date(epochMs));
+        const get = (t: string) =>
+          parseInt(parts.find((p) => p.type === t)?.value ?? "0", 10);
+        let h = get("hour");
+        if (h === 24) h = 0; // some engines emit "24" for midnight
+        return { h, m: get("minute"), s: get("second") };
+      } catch {
+        // Intl timeZone unsupported — fall through to local time.
+      }
+    }
+    const d = new Date(epochMs);
+    return { h: d.getHours(), m: d.getMinutes(), s: d.getSeconds() };
+  };
+  const fmtHM = (date: Date) => {
+    const { h, m } = wallParts(date.getTime());
+    return `${pad2(h)}:${pad2(m)}`;
+  };
 
   // 1b. Clock ticker.
   // Instead of a blind 1s interval (which re-renders 60x/min even though the
@@ -284,12 +356,8 @@ export default function ClockPage() {
 
     const tick = () => {
       const now = new Date();
-      const phrase = convertTimeToHebrewWords(
-        now.getHours(),
-        now.getMinutes(),
-        preciseMode,
-        now.getSeconds()
-      );
+      const { h, m, s } = wallParts(now.getTime());
+      const phrase = convertTimeToHebrewWords(h, m, preciseMode, s);
       if (phrase !== lastPhrase) {
         lastPhrase = phrase;
         setTime(now);
@@ -300,7 +368,8 @@ export default function ClockPage() {
 
     tick();
     return () => clearTimeout(timeoutId);
-  }, [preciseMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preciseMode, tzOverride]);
 
   // 1c. Snap the clock back to the real time whenever the page returns to the
   // foreground. Some browsers — the Kindle's experimental browser especially —
@@ -513,14 +582,12 @@ export default function ClockPage() {
     });
   };
 
-  // 5. Compute correct Hebrew phrasing
+  // 5. Compute correct Hebrew phrasing (wall time honors any tz override)
   const targetText = time
-    ? convertTimeToHebrewWords(
-        time.getHours(),
-        time.getMinutes(),
-        preciseMode,
-        time.getSeconds()
-      )
+    ? (() => {
+        const { h, m, s } = wallParts(time.getTime());
+        return convertTimeToHebrewWords(h, m, preciseMode, s);
+      })()
     : "";
   const processedText = niqqudMode ? targetText : stripNiqqud(targetText);
 
@@ -531,12 +598,7 @@ export default function ClockPage() {
     zmanimMode && time
       ? getCurrentZmanPeriod(time, location.latitude, location.longitude)
       : null;
-  const zmanEndsAtLabel = zmanPeriod?.endsAt
-    ? zmanPeriod.endsAt.toLocaleTimeString("he-IL", {
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : null;
+  const zmanEndsAtLabel = zmanPeriod?.endsAt ? fmtHM(zmanPeriod.endsAt) : null;
   const zmanLabelRaw = zmanPeriod
     ? zmanEndsAtLabel
       ? `${zmanPeriod.label} · עד ${zmanEndsAtLabel}`
@@ -552,7 +614,7 @@ export default function ClockPage() {
   // to the zman label so they're always visible together with "times of
   // day". Usually one line; a fast day clustered near Shabbat adds more.
   const specialTimeLines = specialTimes.map((entry) => {
-    const timeLabel = entry.time.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" });
+    const timeLabel = fmtHM(entry.time);
     const raw = entry.dayPrefix
       ? `${entry.dayPrefix} · ${entry.label} · ${timeLabel}`
       : `${entry.label} · ${timeLabel}`;
@@ -629,6 +691,23 @@ export default function ClockPage() {
   // e-ink the panel is monochrome and held close, so we let the text fill a bit
   // more of the width. The clamp() string is only an SSR/pre-measurement
   // fallback; once mounted, the pixel value below takes over.
+  // Diagnostic string (only rendered when ?debug=1). Shows what the browser's
+  // clock reports so we can see if the JS time/timezone matches the device.
+  const debugInfo = debugMode
+    ? (() => {
+        const raw = new Date();
+        const corrected = wallParts(raw.getTime());
+        return [
+          `shown ${pad2(corrected.h)}:${pad2(corrected.m)}:${pad2(corrected.s)}`,
+          `rawlocal ${pad2(raw.getHours())}:${pad2(raw.getMinutes())}`,
+          `utc ${pad2(raw.getUTCHours())}:${pad2(raw.getUTCMinutes())}`,
+          `tzoff ${raw.getTimezoneOffset()}min`,
+          `tz "${tzOverride || "(none)"}"`,
+          raw.toString(),
+        ].join("  |  ");
+      })()
+    : "";
+
   const phraseLength = stripNiqqud(displayedText || "טוען...").length;
   const vwFactor = einkMode
     ? phraseLength <= 16
@@ -685,6 +764,31 @@ export default function ClockPage() {
       }`}
       style={{ cursor: isIdle ? "none" : "default" }}
     >
+      {/* Diagnostic overlay (?debug=1 only) — reports the browser's real clock */}
+      {debugMode && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: 200,
+            padding: "6px 10px",
+            fontSize: "12px",
+            lineHeight: 1.5,
+            direction: "ltr",
+            textAlign: "left",
+            fontFamily: "monospace",
+            color: einkMode ? "#000" : "#22c55e",
+            background: einkMode ? "#fff" : "#000",
+            borderBottom: "1px solid #888",
+            wordBreak: "break-word",
+          }}
+        >
+          {debugInfo}
+        </div>
+      )}
+
       {/* Weather corner readout */}
       {weatherMode && weather && (
         <div className="fixed top-4 right-4 sm:top-6 sm:right-6 z-10 flex flex-col gap-2 max-w-sm">
@@ -722,13 +826,7 @@ export default function ClockPage() {
                   key={hour.time.getTime()}
                   className="flex items-center gap-1 shrink-0 whitespace-nowrap"
                 >
-                  <span className="opacity-60">
-                    {hour.time.toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      hour12: false,
-                    })}
-                  </span>
+                  <span className="opacity-60">{fmtHM(hour.time)}</span>
                   <WeatherIcon kind={hour.icon} className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   <span dir="ltr" className="font-medium">
                     {hour.temperatureC}°
