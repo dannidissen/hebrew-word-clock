@@ -745,12 +745,27 @@ export default function ClockPage() {
       : phraseLength <= 26
         ? 13
         : 10.5;
-  const heightCap = einkMode ? 0.26 : 0.2;
+  // Landscape (tablet / secondary monitor) with side content switches to a
+  // two-column "dashboard": the clock beside the zmanim/times panel, instead
+  // of a tall centered stack that crowds a short viewport. Portrait and narrow
+  // screens keep the original centered stack unchanged.
+  const hasSideContent = Boolean(
+    zmanLabel || zmanTimeLines.length > 0 || specialTimeLines.length > 0
+  );
+  const isLandscape = viewport.w > 0 && viewport.w / viewport.h >= 1.25;
+  const twoColLayout = isLandscape && hasSideContent && viewport.w >= 700;
+  const sideText = twoColLayout ? "text-right" : "text-center";
+  const sideItems = twoColLayout ? "items-start" : "items-center";
+
+  // In two-column mode the clock only owns part of the width, so size it from
+  // that share; it may also use more vertical room since nothing sits below it.
+  const clockAreaW = twoColLayout ? viewport.w * 0.52 : viewport.w;
+  const heightCap = twoColLayout ? 0.36 : einkMode ? 0.26 : 0.2;
   const clockFontSize = viewport.w
     ? `${Math.round(
         Math.max(
           48,
-          Math.min((vwFactor / 100) * viewport.w, heightCap * viewport.h, 192)
+          Math.min((vwFactor / 100) * clockAreaW, heightCap * viewport.h, 192)
         )
       )}px`
     : `clamp(3rem, min(${vwFactor}vw, ${heightCap * 100}vh), 12rem)`;
@@ -864,7 +879,13 @@ export default function ClockPage() {
       )}
 
       {/* Visual Clock Screen Wrapper to Prevent Shift */}
-      <section className="flex flex-col items-center justify-center min-h-[45vh] w-full max-w-7xl gap-3">
+      <section
+        className={`flex w-full max-w-7xl ${
+          twoColLayout
+            ? "flex-row items-center justify-center gap-10 lg:gap-16 min-h-screen"
+            : "flex-col items-center justify-center min-h-[45vh] gap-3"
+        }`}
+      >
         <h1
           role="timer"
           aria-live="polite"
@@ -880,6 +901,7 @@ export default function ClockPage() {
           style={{
             fontSize: clockFontSize,
             fontFamily: FONT_FAMILY_VAR[fontChoice],
+            maxWidth: twoColLayout ? `${Math.round(clockAreaW)}px` : undefined,
             color: einkMode ? "#000000" : displayedText ? autoColorCss : undefined,
             textShadow: einkMode ? "none" : displayedText ? getThemeTextShadow() : "none",
             ...(einkMode ? {} : { transitionDuration: "500ms, 3000ms" }),
@@ -898,10 +920,16 @@ export default function ClockPage() {
           </span>
         </h1>
 
-        {/* Poetic zman label — appears only around dawn/sunrise/twilight/nightfall */}
+        {hasSideContent && (
+          <div
+            className={`flex flex-col gap-3 ${
+              twoColLayout ? `${sideItems} shrink-0` : "items-center w-full"
+            }`}
+          >
+        {/* Poetic zman label — the current halachic period + when it ends */}
         <p
           aria-live="polite"
-          className={`text-lg sm:text-xl md:text-2xl font-light tracking-[0.2em] text-center select-none ${
+          className={`text-lg sm:text-xl md:text-2xl font-light tracking-[0.2em] ${sideText} select-none ${
             einkMode
               ? `text-black ${zmanLabel ? "opacity-100" : "opacity-0"}`
               : `transition-[opacity,color] duration-700 ease-in-out ${getThemeTextClass()} ${
@@ -919,12 +947,12 @@ export default function ClockPage() {
         {/* Upcoming key zmanim (latest Shema/Tefila, sunset, nightfall) — a
             short rolling list of the next deadlines, nearest one emphasized. */}
         {zmanTimeLines.length > 0 && (
-          <div className="flex flex-col items-center gap-0.5">
+          <div className={`flex flex-col gap-0.5 ${sideItems}`}>
             {zmanTimeLines.map((line, i) => (
               <p
                 key={i}
                 aria-live="polite"
-                className={`text-base sm:text-lg tracking-[0.15em] text-center select-none ${
+                className={`text-base sm:text-lg tracking-[0.15em] ${sideText} select-none ${
                   i === 0 ? "font-normal opacity-90" : "font-light opacity-55"
                 } ${
                   einkMode
@@ -944,12 +972,12 @@ export default function ClockPage() {
 
         {/* Upcoming Shabbat/Yom Tov/fast-day entry and exit times */}
         {specialTimeLines.length > 0 && (
-          <div className="flex flex-col items-center gap-0.5">
+          <div className={`flex flex-col gap-0.5 ${sideItems}`}>
             {specialTimeLines.map((line, i) => (
               <p
                 key={i}
                 aria-live="polite"
-                className={`text-sm sm:text-base font-light tracking-[0.15em] text-center opacity-60 select-none ${
+                className={`text-sm sm:text-base font-light tracking-[0.15em] ${sideText} opacity-60 select-none ${
                   einkMode
                     ? "text-black"
                     : `transition-[opacity,color] duration-700 ease-in-out ${getThemeTextClass()}`
@@ -962,6 +990,8 @@ export default function ClockPage() {
                 {line}
               </p>
             ))}
+          </div>
+        )}
           </div>
         )}
       </section>
