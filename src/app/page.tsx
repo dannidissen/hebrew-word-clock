@@ -1,6 +1,10 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
+
+// useLayoutEffect warns during SSR/prerender; fall back to useEffect there.
+const useIsomorphicLayoutEffect =
+  typeof window !== "undefined" ? useLayoutEffect : useEffect;
 import { convertTimeToHebrewWords, stripNiqqud } from "./hebrewTimeHelper";
 import { useLocation } from "./useLocation";
 import { useWeather } from "./useWeather";
@@ -175,6 +179,12 @@ export default function ClockPage() {
   // experimental browser runs an older WebKit that doesn't support them and
   // silently drops the declaration, collapsing the clock to a tiny default.
   const [viewport, setViewport] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+
+  // In the landscape dashboard the clock is forced onto one line; this scale
+  // shrinks it just enough to fit its column so the eye reads the time at a
+  // glance without it wrapping. Measured from the rendered width below.
+  const clockRef = useRef<HTMLHeadingElement>(null);
+  const [fitScale, setFitScale] = useState(1);
 
   // Only prompt for GPS when a feature that actually needs it is on.
   const wantsLocation = zmanimMode || weatherMode || colorTheme === "auto";
@@ -765,9 +775,35 @@ export default function ClockPage() {
   const clockPx = dashboardLayout
     ? Math.min((vwFactor / 100) * viewport.w * 0.8, 0.28 * viewport.h, 168)
     : Math.min((vwFactor / 100) * viewport.w, heightCap * viewport.h, 192);
+  const clockBasePx = Math.max(48, clockPx);
   const clockFontSize = viewport.w
-    ? `${Math.round(Math.max(48, clockPx))}px`
+    ? `${Math.round(clockBasePx * (dashboardLayout ? fitScale : 1))}px`
     : `clamp(3rem, min(${vwFactor}vw, ${heightCap * 100}vh), 12rem)`;
+
+  // Measure the (single-line) clock against its column and shrink to fit, so a
+  // long phrase never wraps. Converges in a render or two; the ±0.02 guard and
+  // the reset-to-1 outside the dashboard stop it from oscillating.
+  useIsomorphicLayoutEffect(() => {
+    const el = clockRef.current;
+    if (!el) return;
+    if (!dashboardLayout) {
+      if (fitScale !== 1) setFitScale(1);
+      return;
+    }
+    const avail = (el.parentElement?.clientWidth ?? viewport.w) - 8;
+    if (avail <= 0) return;
+    const naturalAtBase = el.scrollWidth / (fitScale || 1);
+    const desired = Math.min(1, avail / naturalAtBase);
+    if (Math.abs(desired - fitScale) > 0.02) setFitScale(desired);
+  }, [
+    displayedText,
+    clockBasePx,
+    dashboardLayout,
+    viewport.w,
+    niqqudMode,
+    fontChoice,
+    fitScale,
+  ]);
 
   const getThemeButtonActive = () => {
     switch (colorTheme) {
@@ -1006,6 +1042,7 @@ export default function ClockPage() {
         }`}
       >
         <h1
+          ref={clockRef}
           role="timer"
           aria-live="polite"
           aria-atomic="true"
@@ -1025,7 +1062,11 @@ export default function ClockPage() {
             ...(einkMode ? {} : { transitionDuration: "500ms, 3000ms" }),
           }}
         >
-          <span className="flex flex-wrap items-baseline justify-center gap-x-[0.3em] gap-y-2">
+          <span
+            className={`flex items-baseline justify-center gap-x-[0.3em] gap-y-2 ${
+              dashboardLayout ? "flex-nowrap whitespace-nowrap" : "flex-wrap"
+            }`}
+          >
             {(displayedText || "טוען...").split(" ").map((word, i) => (
               <span
                 key={`${displayedText}-${i}`}
@@ -1039,8 +1080,20 @@ export default function ClockPage() {
         </h1>
 
         {dashboardLayout ? (
-          /* Landscape: the readouts sit below the clock as titled columns. */
-          <div className="flex flex-row flex-wrap justify-center items-start gap-x-12 lg:gap-x-20 gap-y-6 w-full">
+          /* Landscape: a thin divider seals off the clock, then the readouts
+             sit below as titled columns — so the eye locks onto the time. */
+          <>
+            <div
+              aria-hidden
+              className={`shrink-0 ${einkMode ? "" : getThemeTextClass()}`}
+              style={{
+                height: "1px",
+                width: "min(78%, 680px)",
+                backgroundColor: einkMode ? "#000000" : autoColorCss ?? "currentColor",
+                opacity: einkMode ? 0.28 : 0.16,
+              }}
+            />
+            <div className="flex flex-row flex-wrap justify-center items-start gap-x-12 lg:gap-x-20 gap-y-6 w-full">
             {(zmanLabel || zmanTimeLines.length > 0) && (
               <div className="flex flex-col items-center gap-2">
                 {columnHeader("זְמַנֵּי הַיּוֹם")}
@@ -1060,7 +1113,8 @@ export default function ClockPage() {
                 {weatherReadoutNode}
               </div>
             )}
-          </div>
+            </div>
+          </>
         ) : (
           /* Portrait: the original single centered stack, unchanged. */
           hasSideContent && (
