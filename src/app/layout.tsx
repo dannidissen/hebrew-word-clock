@@ -95,6 +95,31 @@ export default function RootLayout({
       <body
         className={`${assistant.variable} ${davidLibre.variable} ${frankRuhlLibre.variable} ${secularOne.variable} ${notoRashiHebrew.variable} ${stamAshkenaz.variable} ${yiddishkeit.variable} font-sans antialiased bg-black text-amber-100 h-full w-full`}
       >
+        {/*
+          e-ink keep-alive. The Kindle's browser suspends a page's JS timers even
+          in the foreground, which freezes the clock's ticker on the load-time
+          value. A <meta http-equiv="refresh"> is driven by the browser itself,
+          not the JS event loop, so it keeps firing while timers are frozen — the
+          page reloads every 60s and re-renders the current time. This runs at
+          parse time (before hydration) and only when e-ink mode is active, so
+          the interactive dark-mode UI on phones/tablets is never auto-reloaded.
+        */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function () {
+  try {
+    var e = new URLSearchParams(window.location.search).get('eink');
+    var on = e !== null ? (e === '1' || e === 'true') : (localStorage.getItem('einkMode') === 'true');
+    if (on) {
+      var m = document.createElement('meta');
+      m.httpEquiv = 'refresh';
+      m.content = '60';
+      (document.head || document.documentElement).appendChild(m);
+    }
+  } catch (err) {}
+})();`,
+          }}
+        />
         {children}
       </body>
     </html>
