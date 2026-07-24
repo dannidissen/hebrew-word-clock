@@ -973,6 +973,12 @@ export default function ClockPage() {
     fontFamily: FONT_FAMILY_VAR[fontChoice],
   } as const;
 
+  // Shared fade-with-idle behavior for the floating footer and the settings
+  // button, which now live in separate fixed-position elements.
+  const idleFadeClass = isIdle
+    ? "opacity-0 pointer-events-none translate-y-3"
+    : "opacity-100 translate-y-0";
+
   const columnHeader = (text: string) => (
     <p
       className={`text-xs sm:text-sm font-medium tracking-[0.25em] select-none ${
@@ -1344,7 +1350,7 @@ export default function ClockPage() {
           <>
             <div
               aria-hidden
-              className={`shrink-0 ${einkMode ? "" : getThemeTextClass()}`}
+              className={`shrink-0 mt-6 sm:mt-10 lg:mt-14 ${einkMode ? "" : getThemeTextClass()}`}
               style={{
                 height: "1px",
                 width: "min(78%, 680px)",
@@ -1403,9 +1409,7 @@ export default function ClockPage() {
       {/* Floating minimal settings footer — collapsed behind a gear icon by
           default, with grouped categories inside instead of one long row. */}
       <footer
-        className={`fixed bottom-6 left-0 right-0 flex flex-col items-center gap-3 transition-all duration-700 px-4 z-50 ${
-          isIdle ? "opacity-0 pointer-events-none translate-y-3" : "opacity-100 translate-y-0"
-        }`}
+        className={`fixed bottom-6 left-0 right-0 flex flex-col items-center gap-3 transition-all duration-700 px-4 z-50 ${idleFadeClass}`}
       >
         {settingsOpen && (
           <div
@@ -1659,26 +1663,6 @@ export default function ClockPage() {
           </div>
         )}
 
-        {/* Settings toggle */}
-        <button
-          onClick={() => setSettingsOpen((v) => !v)}
-          aria-label={settingsOpen ? "סגור הגדרות" : "פתח הגדרות"}
-          aria-expanded={settingsOpen}
-          className={`w-11 h-11 rounded-full flex items-center justify-center border transition-all duration-300 ${
-            einkMode
-              ? settingsOpen
-                ? "bg-white border-black text-black"
-                : "bg-white border-black/30 text-neutral-700"
-              : `bg-neutral-950/50 backdrop-blur-md shadow-2xl ${
-                  settingsOpen
-                    ? getThemeButtonActive()
-                    : "border-neutral-900/60 text-neutral-400 hover:text-neutral-200"
-                }`
-          }`}
-        >
-          <SettingsIcon className="w-5 h-5" />
-        </button>
-
         {/* Small wake-lock fallback guidance note */}
         {!wakeLockActive && (
           <p
@@ -1699,6 +1683,27 @@ export default function ClockPage() {
           </p>
         )}
       </footer>
+
+      {/* Settings toggle — parked in the corner, off to the side of the
+          centered readouts, rather than sitting dead-center at the bottom. */}
+      <button
+        onClick={() => setSettingsOpen((v) => !v)}
+        aria-label={settingsOpen ? "סגור הגדרות" : "פתח הגדרות"}
+        aria-expanded={settingsOpen}
+        className={`fixed bottom-6 left-6 z-50 w-11 h-11 rounded-full flex items-center justify-center border transition-all duration-300 ${idleFadeClass} ${
+          einkMode
+            ? settingsOpen
+              ? "bg-white border-black text-black"
+              : "bg-white border-black/30 text-neutral-700"
+            : `bg-neutral-950/50 backdrop-blur-md shadow-2xl ${
+                settingsOpen
+                  ? getThemeButtonActive()
+                  : "border-neutral-900/60 text-neutral-400 hover:text-neutral-200"
+              }`
+        }`}
+      >
+        <SettingsIcon className="w-5 h-5" />
+      </button>
     </main>
   );
 }
