@@ -11,7 +11,8 @@ const useIsomorphicLayoutEffect =
 // time is. 24h covers "how long until the fast ends" and "until Shabbat".
 const COUNTDOWN_WINDOW_MS = 24 * 60 * 60 * 1000;
 import { convertTimeToHebrewWords, stripNiqqud } from "./hebrewTimeHelper";
-import { useLocation } from "./useLocation";
+import { useLocation, searchCities } from "./useLocation";
+import type { CitySuggestion } from "./useLocation";
 import { useWeather } from "./useWeather";
 import { useNudge } from "./useNudge";
 import { getCurrentZmanPeriod, getUpcomingZmanim, getAutoThemeColor } from "./solarTimes";
@@ -207,6 +208,39 @@ export default function ClockPage() {
   // Only prompt for GPS when a feature that actually needs it is on.
   const wantsLocation = zmanimMode || weatherMode || colorTheme === "auto";
   const location = useLocation(wantsLocation);
+
+  // Manual city picker in the settings panel. The query is debounced so a
+  // search isn't fired off on every keystroke.
+  const [cityQuery, setCityQuery] = useState<string>("");
+  const [cityResults, setCityResults] = useState<CitySuggestion[]>([]);
+  const [cityStatus, setCityStatus] = useState<"idle" | "loading" | "empty" | "error">(
+    "idle"
+  );
+  useEffect(() => {
+    const query = cityQuery.trim();
+    if (query.length < 2) {
+      setCityResults([]);
+      setCityStatus("idle");
+      return;
+    }
+    setCityStatus("loading");
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        const results = await searchCities(query, controller.signal);
+        setCityResults(results);
+        setCityStatus(results.length > 0 ? "idle" : "empty");
+      } catch (err) {
+        if ((err as Error)?.name === "AbortError") return;
+        setCityResults([]);
+        setCityStatus("error");
+      }
+    }, 350);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [cityQuery]);
   const weather = useWeather(location, weatherMode);
   // Nudge tasks are irrelevant on e-ink (slow refresh, monochrome) — never poll there.
   const nudge = useNudge(nudgeUrl, nudgeToken, nudgeMode && !einkMode);
@@ -673,6 +707,24 @@ export default function ClockPage() {
     localStorage.setItem("nudgeToken", value);
   };
 
+  const handleCityPick = (city: CitySuggestion) => {
+    location.setManualLocation({
+      latitude: city.latitude,
+      longitude: city.longitude,
+      label: city.name,
+    });
+    setCityQuery("");
+    setCityResults([]);
+    setCityStatus("idle");
+  };
+
+  const handleUseDeviceLocation = () => {
+    location.clearManualLocation();
+    setCityQuery("");
+    setCityResults([]);
+    setCityStatus("idle");
+  };
+
   const handleEinkToggle = () => {
     setEinkMode((prev) => {
       const next = !prev;
@@ -965,6 +1017,20 @@ export default function ClockPage() {
     `px-3.5 py-1.5 rounded-full text-[11px] font-medium tracking-wider transition-all duration-300 border ${
       active ? pillActiveClass : pillIdleClass
     } ${extra}`;
+
+  // Which place the zmanim / weather / auto-color are actually computed for,
+  // spelled out in the settings panel so it's never a mystery.
+  const locationName = location.label
+    ? niqqudMode
+      ? location.label
+      : stripNiqqud(location.label)
+    : "מיקום ללא שם";
+  const locationSourceLabel =
+    location.source === "manual"
+      ? "נבחר ידנית"
+      : location.source === "device"
+        ? "לפי מיקום המכשיר"
+        : "ברירת מחדל";
 
   // Shared, center-aligned readout nodes, reused by both the portrait stack
   // and the landscape dashboard columns so the two layouts can't drift apart.
@@ -1374,7 +1440,7 @@ export default function ClockPage() {
             )}
             {specialListNode && (
               <div className="flex flex-col items-center gap-2">
-                {columnHeader("שַׁבָּת וְצוֹם")}
+                {columnHeader("שַׁבָּת וּמוֹעֵד")}
                 {specialListNode}
               </div>
             )}
@@ -1501,6 +1567,100 @@ export default function ClockPage() {
                 </span>
               </div>
             )}
+
+            {/* מיקום: which coordinates the zmanim, weather and auto color are
+                computed for — shown explicitly, and overridable by picking a
+                city, since the device's own fix is often absent (desktop) or
+                simply not where the user wants times for. */}
+            <div
+              className={`flex flex-col gap-2 pt-3.5 border-t ${
+                einkMode ? "border-black/15" : "border-neutral-800/60"
+              }`}
+            >
+              <span
+                className={`text-[9px] font-medium tracking-widest px-1 ${
+                  einkMode ? "text-neutral-700" : "text-neutral-600"
+                }`}
+              >
+                מיקום
+              </span>
+              <div className="flex items-baseline justify-between gap-2 px-1">
+                <span
+                  className={`text-[12px] font-medium tracking-wide ${
+                    einkMode ? "text-black" : "text-neutral-200"
+                  }`}
+                >
+                  {locationName}
+                </span>
+                <span
+                  className={`text-[9px] shrink-0 ${
+                    einkMode ? "text-neutral-600" : "text-neutral-500"
+                  }`}
+                >
+                  {locationSourceLabel}
+                </span>
+              </div>
+              <span
+                dir="ltr"
+                className={`text-[9px] px-1 text-right ${
+                  einkMode ? "text-neutral-600" : "text-neutral-500"
+                }`}
+              >
+                {location.latitude.toFixed(3)}°, {location.longitude.toFixed(3)}°
+              </span>
+              <input
+                type="text"
+                inputMode="search"
+                placeholder="חיפוש עיר…"
+                value={cityQuery}
+                onChange={(e) => setCityQuery(e.target.value)}
+                className={`w-full rounded-xl px-3 py-1.5 text-[11px] tracking-wide outline-none border ${
+                  einkMode
+                    ? "bg-white border-black/30 text-black placeholder:text-neutral-400"
+                    : "bg-neutral-900/70 border-neutral-700/70 text-neutral-200 placeholder:text-neutral-600"
+                }`}
+              />
+              {cityResults.length > 0 && (
+                <div className="flex flex-col gap-1">
+                  {cityResults.map((city) => (
+                    <button
+                      key={`${city.latitude},${city.longitude},${city.label}`}
+                      onClick={() => handleCityPick(city)}
+                      className={`w-full text-right rounded-xl px-3 py-1.5 text-[11px] tracking-wide border transition-colors duration-200 ${
+                        einkMode
+                          ? "border-black/20 text-black hover:bg-black/5"
+                          : "border-neutral-800/70 text-neutral-300 hover:text-neutral-100 hover:bg-white/5"
+                      }`}
+                    >
+                      {city.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="flex items-center justify-between gap-2">
+                <span
+                  className={`text-[9px] leading-relaxed px-1 ${
+                    einkMode ? "text-neutral-600" : "text-neutral-500"
+                  }`}
+                >
+                  {cityStatus === "loading"
+                    ? "מחפש…"
+                    : cityStatus === "empty"
+                      ? "לא נמצאה עיר בשם הזה."
+                      : cityStatus === "error"
+                        ? "החיפוש נכשל — בדוק/י את החיבור לאינטרנט."
+                        : "משפיע על זמני היום, מזג האוויר והצבע האוטומטי."}
+                </span>
+                {location.source === "manual" && (
+                  <button
+                    onClick={handleUseDeviceLocation}
+                    className={`${pillClass(false)} shrink-0 whitespace-nowrap`}
+                  >
+                    מיקום המכשיר
+                  </button>
+                )}
+              </div>
+            </div>
 
             {/* מסך: device/screen behavior. Always rendered — it holds the
                 e-ink toggle, which must stay reachable even where wake-lock and
