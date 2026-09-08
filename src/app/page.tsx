@@ -16,6 +16,7 @@ import type { CitySuggestion } from "./useLocation";
 import { useWeather } from "./useWeather";
 import { useNudge } from "./useNudge";
 import { getCurrentZmanPeriod, getUpcomingZmanim, getAutoThemeColor } from "./solarTimes";
+import { ProgressTrackersView } from "./ProgressTrackersView";
 import type { SpecialTimeEntry } from "./shabbatTimes";
 import type { JewishCalendarInfo } from "./hebrewCalendar";
 import type { WeatherIconKind, HourlyForecast } from "./useWeather";
@@ -164,6 +165,11 @@ export default function ClockPage() {
   const [nudgeMode, setNudgeMode] = useState<boolean>(false);
   const [nudgeUrl, setNudgeUrl] = useState<string>("");
   const [nudgeToken, setNudgeToken] = useState<string>("");
+  const [progressMode, setProgressMode] = useState<boolean>(true);
+  const [t5StartTime, setT5StartTime] = useState<number>(() => Date.now());
+  const [deductShabbat, setDeductShabbat] = useState<boolean>(true);
+  const [percentDirection, setPercentDirection] = useState<"elapsed" | "remaining">("elapsed");
+  const [progressTick, setProgressTick] = useState<number>(() => Date.now());
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
 
   // e-ink / Kindle mode: white background, black text, no animations, no glow.
@@ -374,6 +380,31 @@ export default function ClockPage() {
     const storedNudgeToken = localStorage.getItem("nudgeToken");
     if (storedNudgeToken !== null) setNudgeToken(storedNudgeToken);
 
+    const storedProgress = localStorage.getItem("progressMode");
+    if (storedProgress !== null) setProgressMode(storedProgress === "true");
+
+    const storedT5 = localStorage.getItem("t5StartTime");
+    if (storedT5) {
+      const parsed = parseInt(storedT5, 10);
+      if (!isNaN(parsed) && parsed > 0) {
+        setT5StartTime(parsed);
+      } else {
+        const now = Date.now();
+        localStorage.setItem("t5StartTime", String(now));
+        setT5StartTime(now);
+      }
+    } else {
+      const now = Date.now();
+      localStorage.setItem("t5StartTime", String(now));
+      setT5StartTime(now);
+    }
+
+    const storedDeduct = localStorage.getItem("deductShabbat");
+    if (storedDeduct !== null) setDeductShabbat(storedDeduct === "true");
+
+    const storedDir = localStorage.getItem("percentDirection");
+    if (storedDir === "elapsed" || storedDir === "remaining") setPercentDirection(storedDir);
+
     // e-ink mode resolution, in priority order:
     //   1. explicit ?eink=1 / ?eink=0 URL param (best for a bookmarked kiosk),
     //   2. a previously stored toggle,
@@ -515,6 +546,15 @@ export default function ClockPage() {
       window.removeEventListener("orientationchange", update);
     };
   }, []);
+
+  // 1e. Live ticker for progress bars (ticked every second when enabled; once a minute on e-ink)
+  useEffect(() => {
+    if (!progressMode) return;
+    const intervalMs = einkMode ? 60000 : 1000;
+    setProgressTick(Date.now());
+    const id = setInterval(() => setProgressTick(Date.now()), intervalMs);
+    return () => clearInterval(id);
+  }, [progressMode, einkMode]);
 
   // 2. Wake Lock handlers
   const requestWakeLock = async () => {
@@ -733,6 +773,36 @@ export default function ClockPage() {
     });
   };
 
+  const handleProgressToggle = () => {
+    setProgressMode((prev) => {
+      const next = !prev;
+      localStorage.setItem("progressMode", String(next));
+      return next;
+    });
+  };
+
+  const handleResetT5 = () => {
+    const now = Date.now();
+    setT5StartTime(now);
+    localStorage.setItem("t5StartTime", String(now));
+  };
+
+  const handleDeductShabbatToggle = () => {
+    setDeductShabbat((prev) => {
+      const next = !prev;
+      localStorage.setItem("deductShabbat", String(next));
+      return next;
+    });
+  };
+
+  const handlePercentDirectionToggle = () => {
+    setPercentDirection((prev) => {
+      const next = prev === "elapsed" ? "remaining" : "elapsed";
+      localStorage.setItem("percentDirection", next);
+      return next;
+    });
+  };
+
   // 5. Compute correct Hebrew phrasing (wall time honors any tz override)
   const targetText = time
     ? (() => {
@@ -947,9 +1017,12 @@ export default function ClockPage() {
       nudgeToken.trim() &&
       (nudge.data || nudge.status === "error")
   );
+  const hasProgress = progressMode;
   const isLandscape = viewport.w > 0 && viewport.w / viewport.h >= 1.25;
   const dashboardLayout =
-    isLandscape && viewport.w >= 700 && (hasSideContent || hasWeather || hasNudge);
+    isLandscape &&
+    viewport.w >= 700 &&
+    (hasSideContent || hasWeather || hasNudge || hasProgress);
 
   // The hero clock uses the full width; cap its height a bit more tightly in
   // the dashboard so the columns below it have room.
@@ -1257,6 +1330,21 @@ export default function ClockPage() {
       </div>
     ) : null;
 
+  const progressTrackersNode = progressMode ? (
+    <ProgressTrackersView
+      now={new Date(progressTick)}
+      einkMode={einkMode}
+      colorTheme={colorTheme}
+      autoColorCss={autoColorCss}
+      fontFamily={FONT_FAMILY_VAR[fontChoice]}
+      themeTextClass={getThemeTextClass()}
+      t5StartTime={t5StartTime}
+      onResetT5={handleResetT5}
+      deductShabbat={deductShabbat}
+      percentDirection={percentDirection}
+    />
+  ) : null;
+
   return (
     <main
       className={`flex flex-col items-center justify-center min-h-screen w-full select-none relative overflow-hidden px-6 ${
@@ -1456,17 +1544,24 @@ export default function ClockPage() {
                 {nudgeNode}
               </div>
             )}
+            {progressTrackersNode && (
+              <div className="flex flex-col items-center gap-2">
+                {columnHeader("הִתְקַדְּמוּת")}
+                {progressTrackersNode}
+              </div>
+            )}
             </div>
           </>
         ) : (
           /* Portrait: the original single centered stack, unchanged. */
-          (hasSideContent || jewishCalNode || nudgeNode) && (
+          (hasSideContent || jewishCalNode || nudgeNode || progressTrackersNode) && (
             <div className="flex flex-col gap-3 items-center w-full">
               {periodLabelNode}
               {zmanListNode}
               {jewishCalNode}
               {specialListNode}
               {nudgeNode}
+              {progressTrackersNode}
             </div>
           )
         )}
@@ -1509,6 +1604,9 @@ export default function ClockPage() {
                 </button>
                 <button onClick={handleNudgeToggle} className={pillClass(nudgeMode)}>
                   משימות
+                </button>
+                <button onClick={handleProgressToggle} className={pillClass(progressMode)}>
+                  התקדמות
                 </button>
               </div>
             </div>
@@ -1661,6 +1759,43 @@ export default function ClockPage() {
                 )}
               </div>
             </div>
+
+            {/* שעוני התקדמות: config for weekly & 5h progress bars */}
+            {progressMode && (
+              <div
+                className={`flex flex-col gap-2 pt-3.5 border-t ${
+                  einkMode ? "border-black/15" : "border-neutral-800/60"
+                }`}
+              >
+                <span
+                  className={`text-[9px] font-medium tracking-widest px-1 ${
+                    einkMode ? "text-neutral-700" : "text-neutral-600"
+                  }`}
+                >
+                  שעוני התקדמות
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    onClick={handlePercentDirectionToggle}
+                    className={pillClass(percentDirection === "remaining")}
+                  >
+                    {percentDirection === "elapsed" ? "כיוון: חלף" : "כיוון: נותר"}
+                  </button>
+                  <button
+                    onClick={handleDeductShabbatToggle}
+                    className={pillClass(deductShabbat)}
+                  >
+                    {deductShabbat ? "ניכוי שבת: מופעל" : "ניכוי שבת: כבוי"}
+                  </button>
+                  <button
+                    onClick={handleResetT5}
+                    className={pillClass(false, "hover:border-amber-400")}
+                  >
+                    ↻ אפס סשן 5 שעות
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* מסך: device/screen behavior. Always rendered — it holds the
                 e-ink toggle, which must stay reachable even where wake-lock and
